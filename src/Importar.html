@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+*{box-sizing:border-box}
+body{font-family:Inter,Arial,sans-serif;font-size:13.5px;color:#101828;margin:0;padding:4px 6px}
+h3{margin:0 0 6px;font-size:15px}
+p{margin:4px 0 10px;color:#475467;line-height:1.45}
+.tabs{display:flex;gap:6px;margin:6px 0 12px}
+.tab{border:1px solid #E4E7EC;background:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-weight:500}
+.tab.on{border-color:#1F3A5F;background:#EEF2F7;color:#1F3A5F;font-weight:600}
+.box{border:1px solid #E4E7EC;border-radius:10px;padding:14px;background:#FCFCFD}
+.inp{border:1px solid #D0D5DD;border-radius:7px;padding:7px 9px;width:100%;font:inherit;margin-bottom:8px}
+label{font-size:12px;color:#667085;display:block;margin-bottom:3px}
+.btn{border:1px solid #D0D5DD;background:#fff;border-radius:8px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer}
+.btn.pri{background:#1F3A5F;border-color:#1F3A5F;color:#fff}
+.btn:disabled{opacity:.5;cursor:default}
+table{width:100%;border-collapse:collapse;margin:6px 0 14px}
+th{text-align:left;font-size:12px;color:#667085;padding:6px;border-bottom:1px solid #E4E7EC}
+td{padding:5px 6px;border-bottom:1px solid #F2F4F7}
+td select{width:100%;border:1px solid #D0D5DD;border-radius:6px;padding:5px;font:inherit}
+.n{color:#98A2B3;font-size:12px}
+.ok{background:#ECFDF3;border:1px solid #ABEFC6;color:#067647;border-radius:10px;padding:14px}
+.err{background:#FEF3F2;border:1px solid #FECDCA;color:#B42318;border-radius:8px;padding:10px;margin:8px 0}
+.stats{display:flex;gap:10px;margin:8px 0 14px;flex-wrap:wrap}
+.stat{background:#F2F4F7;border-radius:8px;padding:8px 12px}
+.stat b{font-size:18px;display:block}
+.chk{display:flex;gap:8px;align-items:center;margin:6px 0}
+.foot{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+.hide{display:none}
+small a{color:#1570EF}
+</style>
+</head>
+<body style="max-width:760px;margin:20px auto">
+<div id="cfgExec" data-h="<?= (ScriptApp.getService().getUrl() || '').substring(8) ?>" hidden></div>
+<p><a href="#" id="linkVoltar" target="_top">← Voltar ao quadro</a></p>
+<h2 style="margin:4px 0 12px">Importar do Trello</h2>
+
+<div id="passo1">
+  <h3>1. De onde vêm os dados?</h3>
+  <div class="tabs">
+    <button class="tab on" id="tJson" onclick="fonte('json')">📄 Arquivo JSON exportado</button>
+    <button class="tab" id="tApi" onclick="fonte('api')">🔌 Conectar direto (API)</button>
+  </div>
+  <div class="box" id="fJson">
+    <p>No Trello, abra o quadro → <b>Menu (⋯) → Imprimir, exportar e compartilhar → Exportar como JSON</b>. Salve o arquivo e selecione abaixo.</p>
+    <input type="file" id="arquivo" accept=".json,application/json" class="inp" onchange="lerArquivo(this.files[0])">
+    <p class="n">Atenção: a exportação JSON do Trello traz no máximo os 1.000 comentários mais recentes. Se o quadro tiver mais comentários do que isso, use a conexão direta.</p>
+  </div>
+  <div class="box hide" id="fApi">
+    <p>Puxa tudo, inclusive todos os comentários. Gere a chave e o token em <small><a href="https://trello.com/power-ups/admin" target="_blank">trello.com/power-ups/admin</a></small>: crie um Power-Up, gere a <b>API key</b> e clique em <b>Token</b>. O token é usado só nesta importação e não fica salvo.</p>
+    <label>API key</label><input class="inp" id="key">
+    <label>Token</label><input class="inp" id="token" type="password">
+    <label>Link do quadro</label><input class="inp" id="link" placeholder="https://trello.com/b/AbC123/comunicacao">
+    <div class="foot"><button class="btn pri" id="bApi" onclick="buscarApi()">Buscar quadro</button></div>
+  </div>
+  <div id="erro1"></div>
+</div>
+
+<div id="passo2" class="hide">
+  <h3>2. Confira o mapeamento</h3>
+  <div class="stats" id="stats"></div>
+  <b>Listas do Trello → Colunas do quadro</b>
+  <table><thead><tr><th>Lista no Trello</th><th>Cards</th><th>Vai para</th></tr></thead><tbody id="tListas"></tbody></table>
+  <b>Membros do Trello → Equipe</b>
+  <table><thead><tr><th>Membro no Trello</th><th>Cards</th><th>É quem na equipe</th></tr></thead><tbody id="tMembros"></tbody></table>
+  <p class="n">Etiquetas com o mesmo nome de uma categoria (Design, Vídeos…) viram a categoria do card. As demais viram etiquetas. Se o card tiver mais de um membro, o primeiro vira responsável e os outros entram como etiqueta "+Nome".</p>
+  <div class="chk"><input type="checkbox" id="cArq"><label for="cArq" style="margin:0;font-size:13px;color:#101828">Importar também cards arquivados (entram como arquivados)</label></div>
+  <div class="chk"><input type="checkbox" id="cAg" checked><label for="cAg" style="margin:0;font-size:13px;color:#101828">Criar eventos no Google Agenda para os cards em aberto com prazo</label></div>
+  <div id="erro2"></div>
+  <div class="foot"><button class="btn" onclick="voltar()">Voltar</button><button class="btn pri" id="bImp" onclick="importar()">Importar</button></div>
+</div>
+
+<div id="passo3" class="hide"></div>
+
+<script>
+let CTX=null, B=null;
+function lsGet(k){try{return localStorage.getItem(k)||''}catch(e){return ''}}
+function viaRunImp(acao,p,cod){return new Promise((res,rej)=>google.script.run.withSuccessHandler(res).withFailureHandler(rej).api(acao,p,cod))}
+function run(acao,p){
+  const corpo={acao,p:Object.assign({},p||{},{autor:lsGet('qd_eu'),pin:lsGet('qd_pin')}),codigo:lsGet('qd_codigo')};
+  const el=document.getElementById('cfgExec');const h=el?el.getAttribute('data-h')||'':'';
+  if(!h||h.indexOf('<')>=0)return viaRunImp(acao,corpo.p,corpo.codigo);
+  return fetch('https:'+String.fromCharCode(47,47)+h,{method:'POST',credentials:'omit',redirect:'follow',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(corpo)})
+    .then(r=>r.json(),()=>null)
+    .then(d=>{if(d===null)return viaRunImp(acao,corpo.p,corpo.codigo);if(!d.ok)throw new Error(d.erro||'Erro no servidor');return d.r});
+}
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+const $=id=>document.getElementById(id);
+function erro(el,m){$(el).innerHTML=`<div class="err">${esc(m)}</div>`}
+
+run('trelloContexto').then(c=>{CTX=c;if(c.urlApp)$('linkVoltar').href=c.urlApp}).catch(e=>erro('erro1',/LOGIN|SEM_PERMISSAO/.test(e.message)?'Entre no quadro como Gestor antes de importar.':(e.message||e)));
+
+function fonte(f){
+  $('tJson').classList.toggle('on',f==='json');$('tApi').classList.toggle('on',f==='api');
+  $('fJson').classList.toggle('hide',f!=='json');$('fApi').classList.toggle('hide',f!=='api');
+}
+function lerArquivo(f){
+  if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{try{preparar(JSON.parse(r.result))}catch(e){erro('erro1','Não consegui ler esse arquivo. Confirme se é o JSON exportado do Trello.')}};
+  r.readAsText(f);
+}
+function buscarApi(){
+  $('bApi').disabled=true;$('bApi').textContent='Buscando…';$('erro1').innerHTML='';
+  run('trelloBuscarApi',{key:$('key').value.trim(),token:$('token').value.trim(),link:$('link').value.trim()})
+    .then(preparar).catch(e=>erro('erro1',e.message||e))
+    .finally(()=>{$('bApi').disabled=false;$('bApi').textContent='Buscar quadro'});
+}
+
+/* ---------- normalização do JSON do Trello ---------- */
+function normalizar(b){
+  const listas={};(b.lists||[]).forEach(l=>listas[l.id]={nome:l.name,arquivada:!!l.closed,pos:l.pos});
+  const labels={};(b.labels||[]).forEach(l=>labels[l.id]=l.name||l.color);
+  const cks={};
+  (b.checklists||[]).forEach(c=>{
+    const pref=c.name&&!/^checklist$/i.test(c.name)?c.name+': ':'';
+    (cks[c.idCard]=cks[c.idCard]||[]).push(...(c.checkItems||[]).slice().sort((x,y)=>x.pos-y.pos).map(i=>({texto:pref+i.name,feito:i.state==='complete'})));
+  });
+  const cards=(b.cards||[]).map(c=>({
+    id:c.id,name:c.name,desc:c.desc,idList:c.idList,idMembers:c.idMembers||[],
+    labels:(c.labels||[]).map(l=>l.name||labels[l.id]||'').filter(Boolean),
+    due:c.due,start:c.start,dueComplete:!!c.dueComplete,closed:!!c.closed,pos:c.pos,
+    url:c.shortUrl||c.url,dateLastActivity:c.dateLastActivity,checklist:cks[c.id]||[],
+    anexos:(c.attachments||[]).filter(a=>a.url).map(a=>({nome:a.name||a.url,url:a.url}))
+  }));
+  const comentarios=(b.actions||[]).filter(a=>a.type==='commentCard'&&a.data&&a.data.card).map(a=>({
+    idCard:a.data.card.id,autor:(a.memberCreator||{}).fullName||'Trello',texto:a.data.text,data:a.date}));
+  return {nome:b.name,listas,membros:b.members||[],cards,comentarios};
+}
+
+function sugerirColuna(nome){
+  const n=norm(nome),cols=CTX.colunas;
+  const exata=cols.find(c=>norm(c)===n);if(exata)return exata;
+  if(/conclu|feito|done|entreg|finaliz|publicad|pronto|ok\b/.test(n))return CTX.colunaFinal;
+  const achar=re=>cols.find(c=>re.test(norm(c)));
+  if(/revis|aprova|validac|ajuste/.test(n))return achar(/revis|aprova/)||cols[Math.max(0,cols.length-2)];
+  if(/produc|andamento|fazendo|doing|progress|execu|edicao|criando/.test(n))return achar(/produc|andamento|fazendo/)||cols[1]||cols[0];
+  return cols[0];
+}
+function sugerirMembro(m){
+  const n=norm(m.fullName||m.username).split(/\s+/)[0];
+  return CTX.equipe.find(e=>norm(e).split(/\s+/)[0]===n)||'';
+}
+
+function preparar(raw){
+  if(!CTX){erro('erro1','Aguarde, ainda carregando a configuração…');return}
+  if(!raw||!raw.cards){erro('erro1','Esse arquivo não parece ser a exportação de um quadro do Trello.');return}
+  B=normalizar(raw);
+  const porLista={},porMembro={};
+  B.cards.forEach(c=>{porLista[c.idList]=(porLista[c.idList]||0)+1;c.idMembers.forEach(m=>porMembro[m]=(porMembro[m]||0)+1)});
+  const ab=B.cards.filter(c=>!c.closed).length;
+  $('stats').innerHTML=[['Quadro',esc(B.nome||'—')],['Cards ativos',ab],['Arquivados',B.cards.length-ab],['Comentários',B.comentarios.length],['Já importados antes',CTX.jaImportados]]
+    .map(([l,v])=>`<div class="stat"><span class="n">${l}</span><b>${v}</b></div>`).join('');
+  const opt=(lista,sel,vazio)=>`<option value="">${vazio}</option>`+lista.map(o=>`<option ${o===sel?'selected':''}>${esc(o)}</option>`).join('');
+  $('tListas').innerHTML=Object.keys(B.listas).sort((a,b)=>B.listas[a].pos-B.listas[b].pos).filter(id=>porLista[id]).map(id=>{
+    const l=B.listas[id];
+    return `<tr><td>${esc(l.nome)}${l.arquivada?' <span class="n">(lista arquivada)</span>':''}</td><td>${porLista[id]}</td><td><select data-lista="${id}">${opt(CTX.colunas,l.arquivada?'':sugerirColuna(l.nome),'— não importar —')}</select></td></tr>`;
+  }).join('')||'<tr><td colspan="3" class="n">Nenhum card encontrado</td></tr>';
+  $('tMembros').innerHTML=B.membros.filter(m=>porMembro[m.id]).map(m=>
+    `<tr><td>${esc(m.fullName||m.username)}</td><td>${porMembro[m.id]}</td><td><select data-membro="${m.id}">${opt(CTX.equipe,sugerirMembro(m),'— ninguém / sem responsável —')}</select></td></tr>`
+  ).join('')||'<tr><td colspan="3" class="n">Nenhum membro atribuído aos cards</td></tr>';
+  $('passo1').classList.add('hide');$('passo2').classList.remove('hide');
+}
+function voltarAoQuadro(seg){
+  const url=CTX&&CTX.urlApp;if(!url)return;
+  const tick=()=>{const el=$('contagem');if(seg<=0){try{window.top.location.href=url}catch(e){if(el)el.textContent='Clique em “Voltar ao quadro agora”.'}return}
+    if(el)el.textContent='Voltando ao quadro em '+seg+' segundo'+(seg>1?'s':'')+'…';seg--;setTimeout(tick,1000)};
+  tick();
+}
+function voltar(){$('passo2').classList.add('hide');$('passo1').classList.remove('hide')}
+
+function importar(){
+  const mapaListas={},mapaMembros={},listas={};
+  document.querySelectorAll('[data-lista]').forEach(s=>mapaListas[s.dataset.lista]=s.value);
+  document.querySelectorAll('[data-membro]').forEach(s=>mapaMembros[s.dataset.membro]=s.value);
+  Object.keys(B.listas).forEach(id=>listas[id]=B.listas[id].nome);
+  const incluirArquivados=$('cArq').checked;
+  const cards=B.cards.filter(c=>mapaListas[c.idList]&&(incluirArquivados||!c.closed));
+  const ids=new Set(cards.map(c=>c.id));
+  const comentarios=B.comentarios.filter(c=>ids.has(c.idCard));
+  $('bImp').disabled=true;$('bImp').textContent=`Importando ${cards.length} cards…`;$('erro2').innerHTML='';
+  run('trelloImportar',{dados:{cards,comentarios,mapaListas,mapaMembros,listas,incluirArquivados,criarEventos:$('cAg').checked}})
+    .then(r=>{
+      $('passo2').classList.add('hide');$('passo3').classList.remove('hide');
+      $('passo3').innerHTML=`<div class="ok"><h3>✅ Importação concluída</h3>
+        <p style="color:#067647">${r.importadas} card(s) importado(s) · ${r.comentarios} comentário(s) · ${r.eventos} evento(s) criados na agenda${r.puladas?` · ${r.puladas} já existiam e foram pulados`:''}${r.ignoradas?` · ${r.ignoradas} ignorados pelo mapeamento`:''}</p>
+        ${r.eventosPendentes?`<p style="color:#B54708">${r.eventosPendentes} evento(s) ficaram para depois por limite de tempo. Use <b>📋 Quadro → Sincronizar tudo com o Google Agenda</b>.</p>`:''}
+        <p style="color:#067647">Pode importar de novo sem medo: cards já importados não se duplicam.</p>
+        <p style="color:#067647;font-weight:600" id="contagem">Voltando ao quadro em 3 segundos…</p></div>
+        <div class="foot"><a class="btn pri" href="${CTX.urlApp||'#'}" target="_top" style="text-decoration:none">Voltar ao quadro agora</a></div>`;
+      voltarAoQuadro(3);
+    })
+    .catch(e=>{erro('erro2',e.message||e);$('bImp').disabled=false;$('bImp').textContent='Importar'});
+}
+</script>
+</body>
+</html>

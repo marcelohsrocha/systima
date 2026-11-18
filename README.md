@@ -29,6 +29,7 @@ As demandas chegam pelo **Google Forms**, viram cards num **Kanban**, são distr
 | **Cronômetro e estimativas** | Tempo gasto × estimado e carga semanal × capacidade de cada pessoa |
 | **Histórico, comentários, anexos e checklists** | Por card |
 | **Importar do Trello** | Por JSON exportado ou pela API, com mapeamento de listas e membros. Reimportar não duplica |
+| **Modo escuro** | Botão 🌙 no topo. Segue o tema do sistema na primeira visita e lembra a escolha de cada pessoa |
 | **Limpar quadro** | Tudo, só o que veio do Trello ou só as arquivadas, com backup automático |
 
 <details><summary>Mais telas</summary>
@@ -38,6 +39,7 @@ As demandas chegam pelo **Google Forms**, viram cards num **Kanban**, são distr
 | ![Lista](docs/02-lista.png) | ![Calendário](docs/03-calendario.png) |
 | ![Linha do tempo](docs/04-linha-do-tempo.png) | ![Carga](docs/05-carga.png) |
 | ![Dashboard](docs/06-dashboard.png) | ![Detalhes](docs/07-detalhes.png) |
+| ![Modo escuro](docs/09-modo-escuro.png) | |
 
 </details>
 

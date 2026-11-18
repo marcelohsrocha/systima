@@ -623,13 +623,19 @@ function renderDash(m,ts){
  * ========================================================= */
 async function abrir(id){
   if(S.drag)return;
-  S.aberto=id;S.det=null;S.subtab='com';marcarVista(id);
+  S.aberto=id;S.det=null;S.subtab='com';S.drId=null;marcarVista(id);
   $('ov').classList.add('on');$('drawer').classList.add('on');
   renderDrawer();
   if(!MOCK)google.script.history&&google.script.history.replace(null,null,id);
   S.det=await call('detalhes',{id});
   if(S.aberto===id)renderDrawer();
 }
+const renderDrawerBase=renderDrawer;
+renderDrawer=function(){
+  const sc=$('drawer').querySelector('.dr-b'),top=sc&&S.drId===S.aberto?sc.scrollTop:0;
+  renderDrawerBase();S.drId=S.aberto;
+  const nv=$('drawer').querySelector('.dr-b');if(nv&&top)nv.scrollTop=top;
+};
 function fecharDrawer(){S.aberto=null;$('ov').classList.remove('on');$('drawer').classList.remove('on');clearInterval(S.tick)}
 
 function renderDrawer(){
@@ -704,9 +710,11 @@ async function salvarCampo(id,campo,valor){
   const t=tarefa(id);if(!t)return;
   if(JSON.stringify(t[campo])===JSON.stringify(valor))return;
   t[campo]=valor;render();if(S.aberto===id)renderDrawer();
+  S.seq=S.seq||{};const sk=id+'|'+campo,sn=(S.seq[sk]=(S.seq[sk]||0)+1);
   let nt;try{nt=await call('atualizar',{id,campos:{[campo]:valor}})}catch(e){return}
+  if(S.seq[sk]!==sn)return;
   Object.assign(t,nt);render();
-  if(S.aberto===id){S.det=await call('detalhes',{id});renderDrawer()}
+  if(S.aberto===id){const det=await call('detalhes',{id});if(S.seq[sk]!==sn||S.aberto!==id)return;S.det=det;renderDrawer()}
 }
 function checkItem(id,iid){const t=tarefa(id);salvarCampo(id,'checklist',t.checklist.map(i=>i.id===iid?{...i,feito:!i.feito}:i))}
 function delItem(id,iid){const t=tarefa(id);salvarCampo(id,'checklist',t.checklist.filter(i=>i.id!==iid))}

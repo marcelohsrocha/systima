@@ -305,7 +305,8 @@ function api(acao, p, codigo) {
   if (['mover', 'atualizar', 'timer', 'tempoManual'].indexOf(acao) >= 0) checarPermissao_(eu, p.id, acao === 'atualizar' ? (p.campos || {}) : null);
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  if (!lock.tryLock(30000)) throw new Error('OCUPADO: o quadro está recebendo muitas alterações ao mesmo tempo. Tente de novo em alguns segundos.');
+  POS_ = [];
   try {
     switch (acao) {
       case 'mover': return toClient_(alterar_(p.id, { status: p.status, ordem: p.ordem }, p.autor));
@@ -319,7 +320,37 @@ function api(acao, p, codigo) {
     }
   } finally {
     lock.releaseLock();
+    const fila = POS_ || [];
+    POS_ = null;
+    POS_RODANDO_ = true;
+    fila.forEach(f => { try { f(); } catch (err) { console.error(err); } });
+    POS_RODANDO_ = false;
   }
+}
+
+let POS_ = null;          // tarefas lentas a executar depois de liberar a trava
+let POS_RODANDO_ = false;
+
+/** Sincroniza a agenda lendo a versão mais recente da tarefa (evita evento desatualizado com movimentos seguidos). */
+function sincronizarAgendaDepois_(id) {
+  const f = buscarTarefa_(id);
+  if (!f) return;
+  const criar = !f.eventoId;
+  let lk = null;
+  if (criar && POS_RODANDO_) { lk = LockService.getScriptLock(); if (!lk.tryLock(30000)) lk = null; }
+  try {
+    const atual = lk ? (buscarTarefa_(id) || f) : f;
+    const ev0 = atual.eventoId;
+    sincronizarAgenda_(atual);
+    if (atual.eventoId !== ev0) gravarCampo_(id, 'eventoId', atual.eventoId);
+  } finally { if (lk) lk.releaseLock(); }
+}
+
+function gravarCampo_(id, campo, valor) {
+  const t = buscarTarefa_(id);
+  if (!t) return;
+  const col = CAMPOS.findIndex(cc => cc[0] === campo) + 1;
+  if (col > 0) shTarefas_().getRange(t._linha, col).setNumberFormat('@').setValue(valor);
 }
 
 /* ---------- perfis e login ---------- */
@@ -1000,12 +1031,16 @@ function alterar_(id, campos, autor, semAutomacao) {
   }
 
   const agendaMudou = ['titulo', 'prazo', 'responsavel', 'status', 'arquivada', 'categoria'].some(k => t[k] !== antes[k]);
-  if (agendaMudou) sincronizarAgenda_(t);
   salvarTarefa_(t);
 
-  if (t.responsavel !== antes.responsavel && t.responsavel) notificarResponsavel_(t, 'Você recebeu uma demanda');
-  if (t.status !== antes.status) notificarStatus_(t, antes.status);
-  efeitos.forEach(f => f());
+  // Agenda e e-mails são lentos: rodam depois de liberar a trava, para não segurar o quadro
+  const pos = () => {
+    if (agendaMudou) sincronizarAgendaDepois_(id);
+    if (t.responsavel !== antes.responsavel && t.responsavel) notificarResponsavel_(t, 'Você recebeu uma demanda');
+    if (t.status !== antes.status) notificarStatus_(t, antes.status);
+    efeitos.forEach(f => f());
+  };
+  if (POS_) POS_.push(pos); else pos();
   return t;
 }
 

@@ -342,7 +342,7 @@ async function carregar(manual,silencioso){
   try{
     const d=await call('board',{arquivadas:S.f.arq});
     if(silencioso&&ocupado()){detectarNovas(d.tarefas,d.me);return}
-    S.cfg=d.config;S.cats=d.categorias;S.equipe=d.equipe;S.tarefas=d.tarefas;S.me=d.me||(S.eu?{nome:S.eu,perfil:'Gestor'}:null);
+    S.cfg=d.config;S.cats=d.categorias;S.equipe=d.equipe;S.tarefas=d.tarefas;aplicarPendentes();S.me=d.me||(S.eu?{nome:S.eu,perfil:'Gestor'}:null);
     if(d.me){S.eu=d.me.nome;lsSet('qd_eu',S.eu)}
     document.body.classList.toggle('leitor',perfil()==='Leitor');
     if(gestor()&&S.cfg.urlApp){$('btnTrello').href=S.cfg.urlApp+'?pagina=importar';$('btnTrello').style.display=''}else $('btnTrello').style.display='none';
@@ -473,7 +473,7 @@ function renderKanban(m,ts){
 function ligarDnD(m){
   m.querySelectorAll('.card').forEach(el=>{
     el.addEventListener('dragstart',e=>{S.drag=el.dataset.id;el.classList.add('dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',el.dataset.id)});
-    el.addEventListener('dragend',()=>{el.classList.remove('dragging');S.drag=null;m.querySelectorAll('.over').forEach(x=>x.classList.remove('over'))});
+    el.addEventListener('dragend',()=>{el.classList.remove('dragging');S.drag=null;if(S.renderDepois){S.renderDepois=false;setTimeout(render,0)}m.querySelectorAll('.over').forEach(x=>x.classList.remove('over'))});
   });
   m.querySelectorAll('.cards').forEach(list=>{
     list.addEventListener('dragover',e=>{
@@ -491,10 +491,16 @@ function ligarDnD(m){
       const po=prev?Number(tarefa(prev.dataset.id).ordem):null,no=next?Number(tarefa(next.dataset.id).ordem):null;
       const ordem=po!=null&&no!=null?(po+no)/2:po!=null?po+1000:no!=null?no-1000:Date.now();
       const t=tarefa(id);const mudouStatus=t.status!==status;
+      const orig={status:t.status,ordem:t.ordem,concluidaEm:t.concluidaEm,timerInicio:t.timerInicio};
       t.status=status;t.ordem=String(ordem);
       if(mudouStatus){t.concluidaEm=status===S.cfg.colunaFinal?hojeISO()+' 00:00':'';if(status===S.cfg.colunaFinal)t.timerInicio=''}
+      pendAdd(id,{status:t.status,ordem:t.ordem,concluidaEm:t.concluidaEm,timerInicio:t.timerInicio});
       render();
-      call('mover',{id,status,ordem:String(ordem),autor:S.eu}).then(nt=>{Object.assign(t,nt);render();if(mudouStatus)toast(`Movida para “${status}”`)});
+      call('mover',{id,status,ordem:String(ordem),autor:S.eu}).then(nt=>{
+        pendFim(id);const tt=tarefa(id);if(tt&&!S.pend[id])Object.assign(tt,nt);renderSeguro();if(mudouStatus)toast(`Movida para “${status}”`);
+      }).catch(err=>{
+        pendFim(id);const tt=tarefa(id);if(tt&&!S.pend[id])Object.assign(tt,orig);renderSeguro();toast('Não foi possível mover: '+msgErro(err)+' A demanda voltou para onde estava.');
+      });
     });
   });
 }
@@ -655,6 +661,12 @@ renderDrawer=function(){
 function alternarTema(){const d=document.documentElement.classList.toggle('dark');try{localStorage.setItem('qd_tema',d?'escuro':'claro')}catch(e){}iconeTema()}
 function iconeTema(){const b=$('btnTema');if(b){const d=document.documentElement.classList.contains('dark');b.textContent=d?'☀️':'🌙';b.title=d?'Modo claro':'Modo escuro'}}
 setTimeout(iconeTema,0);
+S.pend={};
+function pendAdd(id,campos){const p=S.pend[id]||(S.pend[id]={n:0,c:{}});p.n++;Object.assign(p.c,campos)}
+function pendFim(id){const p=S.pend[id];if(p&&--p.n<=0)delete S.pend[id]}
+function aplicarPendentes(){Object.keys(S.pend).forEach(id=>{const t=tarefa(id);if(t)Object.assign(t,S.pend[id].c)})}
+function renderSeguro(){if(S.drag){S.renderDepois=true;return}render()}
+function msgErro(e){return String((e&&(e.message||e.erro))||e||'erro').replace(/^[A-Z_]+:\s*/,'')}
 function fecharDrawer(){S.aberto=null;$('ov').classList.remove('on');$('drawer').classList.remove('on');clearInterval(S.tick)}
 
 function renderDrawer(){
@@ -730,9 +742,11 @@ async function salvarCampo(id,campo,valor){
   if(JSON.stringify(t[campo])===JSON.stringify(valor))return;
   t[campo]=valor;render();if(S.aberto===id)renderDrawer();
   S.seq=S.seq||{};const sk=id+'|'+campo,sn=(S.seq[sk]=(S.seq[sk]||0)+1);
-  let nt;try{nt=await call('atualizar',{id,campos:{[campo]:valor}})}catch(e){return}
+  pendAdd(id,{[campo]:valor});
+  let nt;try{nt=await call('atualizar',{id,campos:{[campo]:valor}})}catch(e){pendFim(id);toast('Não foi possível salvar: '+msgErro(e));return}
+  pendFim(id);
   if(S.seq[sk]!==sn)return;
-  Object.assign(t,nt);render();
+  const tt=tarefa(id);if(tt&&!S.pend[id])Object.assign(tt,nt);renderSeguro();
   if(S.aberto===id){const det=await call('detalhes',{id});if(S.seq[sk]!==sn||S.aberto!==id)return;S.det=det;renderDrawer()}
 }
 function checkItem(id,iid){const t=tarefa(id);salvarCampo(id,'checklist',t.checklist.map(i=>i.id===iid?{...i,feito:!i.feito}:i))}

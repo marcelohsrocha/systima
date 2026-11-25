@@ -774,7 +774,7 @@ function abrirDoc(id){
   const pastas=[...new Set((S.docs||[]).map(x=>x.pasta).filter(Boolean).concat(['Geral','Modelos','Organização','Marca e identidade']))];
   modal(`<h3>${id?'✏️ Editar documento':'＋ Adicionar documento'}</h3><div class="fgrid">
     <div class="full"><label>Nome</label><input class="inp" id="dTit" value="${esc(d.titulo||'')}" placeholder="Ex.: Modelo de roteiro de vídeo"></div>
-    <div class="full"><label>Link</label><input class="inp" id="dLink" value="${esc(d.link||'')}" placeholder="https://docs.google.com/…"></div>
+    <div class="full"><label>Link</label><input class="inp" id="dLink" value="${esc(d.link||'')}" placeholder="https:\/\/docs.google.com/…"></div>
     <div class="full"><label>Pasta</label><input class="inp" id="dPasta" list="dPastas" value="${esc(d.pasta||'Geral')}"><datalist id="dPastas">${pastas.map(p=>`<option value="${esc(p)}">`).join('')}</datalist></div>
     <div class="full"><label>Descrição (opcional)</label><textarea class="inp" id="dDesc" placeholder="Para que serve, quando usar…">${esc(d.descricao||'')}</textarea></div>
   </div><p class="sub">Arquivos do Drive precisam estar compartilhados com a equipe (ou “Qualquer pessoa com o link”) para todos conseguirem abrir.</p>
@@ -784,7 +784,7 @@ function abrirDoc(id){
 async function salvarDoc(id){
   const p={id:id||'',titulo:$('dTit').value.trim(),link:$('dLink').value.trim(),pasta:$('dPasta').value.trim(),descricao:$('dDesc').value.trim()};
   if(!p.titulo){toast('Dê um nome ao documento');return}
-  if(!/^https:\/\/\S+$/i.test(p.link)){toast('O link precisa começar com https://');return}
+  if(!/^https:\/\/\S+$/i.test(p.link)){toast('O link precisa começar com https:\/\/');return}
   try{S.docs=await call('docSalvar',p);fecharModal();renderDocs($('main'));toast(id?'Documento atualizado':'📁 Documento adicionado')}catch(e){toast('Não foi possível salvar: '+msgErro(e))}
 }
 async function excluirDoc(id){
@@ -846,7 +846,7 @@ renderDrawer=function(){
 };
 function alternarTema(){const d=document.documentElement.classList.toggle('dark');try{localStorage.setItem('qd_tema',d?'escuro':'claro')}catch(e){}iconeTema()}
 /* ---------- fundo: pessoal (navegador) > da equipe (Config) > padrão do tema ----------
-   Valor do fundo: '' (padrão), '#rrggbb' (cor), 'https://…' (foto por link) ou 'data:image/…' (foto enviada, só no navegador) */
+   Valor do fundo: vazio (padrão), cor #rrggbb, link https de foto ou foto enviada (data:image, só no navegador) */
 const FUNDOS=[['Azul claro','#DCE8F7'],['Menta','#DDF1E6'],['Lilás','#E9E2F7'],['Rosa','#F8E1EA'],['Areia','#F3EBDD'],['Cinza','#DADDE3'],
   ['Azul-marinho','#1F3A5F'],['Verde-floresta','#1E4D3A'],['Roxo','#3B2A63'],['Vinho','#5A1F33'],['Grafite','#2B2F36'],['Preto','#111418']];
 function hexOk(c){return /^#[0-9a-f]{6}$/i.test(c||'')}
@@ -854,7 +854,7 @@ function ehFoto(v){return /^(https:\/\/|data:image\/)/i.test(v||'')}
 function luminancia(hex){const n=parseInt(hex.slice(1),16),f=v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)};return .2126*f(n>>16&255)+.7152*f(n>>8&255)+.0722*f(n&255)}
 /** Links do Google Drive viram link direto da imagem. */
 function linkImagem(u){u=String(u||'').trim();const m=u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=\w+&)?id=)([\w-]{20,})/)||u.match(/[?&]id=([\w-]{20,})/);
-  return m&&/google\.com/.test(u)?'https://lh3.googleusercontent.com/d/'+m[1]:u}
+  return m&&/google\.com/.test(u)?'https:\/\/lh3.googleusercontent.com/d/'+m[1]:u}
 function fundoPessoal(){const p=lsGet('qd_fundo')||'';return p==='foto'?(lsGet('qd_foto')||''):p}
 function aplicarFundo(v){
   if(v===undefined){const p=fundoPessoal();v=p==='padrao'?'':p||(S.cfg&&S.cfg.fundo)||''}
@@ -907,7 +907,7 @@ function escolherFundo(c){S.fundoTmp=c;aplicarFundo(c||'');document.querySelecto
   const h=$('fundoHex');if(h)h.textContent=hexOk(c)?c:'';if(hexOk(c)&&$('fundoLivre'))$('fundoLivre').value=c;atualizarBtnEquipe()}
 function usarLinkFundo(){
   const u=linkImagem($('fundoLink').value);
-  if(!/^https:\/\/\S+$/i.test(u)){toast('Cole um link que comece com https://');return}
+  if(!/^https:\/\/\S+$/i.test(u)){toast('Cole um link que comece com https:\/\/');return}
   const img=new Image();img.onload=()=>{escolherFundo(u);$('fundoLink').value=u;toast('Prévia aplicada. Salve para manter.')};
   img.onerror=()=>toast('Não consegui abrir essa imagem. No Drive, confira se está compartilhada com “Qualquer pessoa com o link”.');
   img.src=u;
@@ -1036,7 +1036,7 @@ async function salvarCampo(id,campo,valor){
 function checkItem(id,iid){const t=tarefa(id);salvarCampo(id,'checklist',t.checklist.map(i=>i.id===iid?{...i,feito:!i.feito}:i))}
 function delItem(id,iid){const t=tarefa(id);salvarCampo(id,'checklist',t.checklist.filter(i=>i.id!==iid))}
 function addItem(id,txt){const t=tarefa(id);salvarCampo(id,'checklist',[...(t.checklist||[]),{id:Math.random().toString(36).slice(2,10),texto:txt,feito:false}])}
-function addAnexo(id){const n=$('anxNome').value.trim(),u=$('anxUrl').value.trim();if(!/^https?:\/\//.test(u)){toast('Cole um link começando com https://');return}const t=tarefa(id);salvarCampo(id,'anexos',[...(t.anexos||[]),{nome:n||u,url:u}])}
+function addAnexo(id){const n=$('anxNome').value.trim(),u=$('anxUrl').value.trim();if(!/^https?:\/\//.test(u)){toast('Cole um link começando com https:\/\/');return}const t=tarefa(id);salvarCampo(id,'anexos',[...(t.anexos||[]),{nome:n||u,url:u}])}
 function delAnexo(id,i){const t=tarefa(id);salvarCampo(id,'anexos',t.anexos.filter((_,j)=>j!==i))}
 async function comentar(id){
   const txt=$('novoCom').value.trim();if(!txt)return;
@@ -1492,10 +1492,10 @@ function mockApi(acao,p){
   if(!me)throw new Error('LOGIN');
   const recCli=r=>{const desde=r.ultima&&r.ultima>=hojeISO()?addDias(r.ultima,1):hojeISO();return {...r,texto:recTexto(r),proxima:r.ativa?(recProximas(r,r.inicio>desde?r.inicio:desde,1)[0]||''):''}};
   DB.chat=DB.chat||[{data:addDias(hojeISO(),-1)+' 17:42',autor:'Bruna',texto:'Pessoal, subi as artes do webinar na pasta de entregas 👍'},{data:hojeISO()+' 08:15',autor:'Ana',texto:'Bom dia! @Carla consegue cobrir o workshop na quinta?'},{data:hojeISO()+' 08:31',autor:'Carla',texto:'Consigo sim, já reservei a câmera.'}];
-  DB.docs=DB.docs||[{id:'d1',titulo:'Organograma da equipe',link:'https://docs.google.com/presentation/d/exemplo',pasta:'Organização',descricao:'Quem faz o quê e quem substitui quem.',autor:'Ana',data:hojeISO()},
-    {id:'d2',titulo:'Modelo de roteiro de vídeo',link:'https://docs.google.com/document/d/exemplo',pasta:'Modelos',descricao:'Use para VTs e vídeos de redes: abertura, mensagem, chamada.',autor:'Diego',data:hojeISO()},
-    {id:'d3',titulo:'Manual da marca',link:'https://exemplo.com/manual.pdf',pasta:'Marca e identidade',descricao:'Cores, fontes e uso do logo.',autor:'Ana',data:hojeISO()},
-    {id:'d4',titulo:'Templates de posts',link:'https://www.canva.com/design/exemplo',pasta:'Modelos',descricao:'',autor:'Bruna',data:hojeISO()}];
+  DB.docs=DB.docs||[{id:'d1',titulo:'Organograma da equipe',link:'https:\/\/docs.google.com/presentation/d/exemplo',pasta:'Organização',descricao:'Quem faz o quê e quem substitui quem.',autor:'Ana',data:hojeISO()},
+    {id:'d2',titulo:'Modelo de roteiro de vídeo',link:'https:\/\/docs.google.com/document/d/exemplo',pasta:'Modelos',descricao:'Use para VTs e vídeos de redes: abertura, mensagem, chamada.',autor:'Diego',data:hojeISO()},
+    {id:'d3',titulo:'Manual da marca',link:'https:\/\/exemplo.com/manual.pdf',pasta:'Marca e identidade',descricao:'Cores, fontes e uso do logo.',autor:'Ana',data:hojeISO()},
+    {id:'d4',titulo:'Templates de posts',link:'https:\/\/www.canva.com/design/exemplo',pasta:'Modelos',descricao:'',autor:'Bruna',data:hojeISO()}];
   const chatL=d=>{const ini=Math.max(Number(d)||0,DB.chat.length-200);return {total:DB.chat.length,msgs:DB.chat.slice(ini).map((m,i)=>({...m,n:ini+i+1,id:'m'+(ini+i)}))}};
   if(acao==='chatListar')return JSON.parse(JSON.stringify(chatL(p.desde)));
   if(acao==='chatEnviar'){const t=String(p.texto||'').trim();if(!t)throw new Error('Mensagem vazia');DB.chat.push({data:agora(),autor:me.nome,texto:t});return JSON.parse(JSON.stringify(chatL(p.desde)))}
@@ -1514,7 +1514,7 @@ function mockApi(acao,p){
     case 'board':return JSON.parse(JSON.stringify({config:{nome:'Sýstima (demo)',cor:'#1F3A5F',fundo:DB.fundo||'',colunas:['Novo','Em produção','Revisão','Entregue'],colunaFinal:'Entregue',prioridades:['Baixa','Normal','Alta','Urgente'],agenda:true},
       me:{nome:me.nome,perfil:me.perfil,avisos:me.avisos!==false,resumo:me.resumo!==false,email:true},categorias:DB.cats,equipe:DB.equipe.map(({pin,...m})=>m),tarefas:DB.tarefas.filter(t=>p.arquivadas||t.arquivada!=='SIM').map(t=>({...t,comentarios:(DB.com[t.id]||[]).length})),recorrencias:DB.recs.map(recCli),
       chat:{total:DB.chat.length,ultimo:DB.chat.length?{...DB.chat[DB.chat.length-1]}:null},documentos:DB.docs}));
-    case 'docSalvar':{if(!p.titulo||!/^https:\/\//.test(p.link))throw new Error('Nome e link https:// são obrigatórios');
+    case 'docSalvar':{if(!p.titulo||!/^https:\/\//.test(p.link))throw new Error('Nome e link https:\/\/ são obrigatórios');
       if(p.id){const d=DB.docs.find(x=>x.id===p.id);if(me.perfil!=='Gestor'&&d.autor!==me.nome)throw new Error('SEM_PERMISSAO: só um gestor ou quem adicionou pode editar');Object.assign(d,{titulo:p.titulo,link:p.link,pasta:p.pasta||'Geral',descricao:p.descricao})}
       else DB.docs.push({id:'d'+Date.now(),titulo:p.titulo,link:p.link,pasta:p.pasta||'Geral',descricao:p.descricao,autor:me.nome,data:agora()});return JSON.parse(JSON.stringify(DB.docs))}
     case 'entrega':{const t=find(p.id);const l=JSON.parse(JSON.stringify(t.entregas||[]));const gc=me.perfil==='Gestor'||t.responsavel===me.nome;const e=l.find(x=>x.id===p.entregaId);

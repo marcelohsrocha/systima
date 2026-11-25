@@ -689,6 +689,7 @@ function criarDoFormulario_(namedValues, autor, origem) {
     const d = Object.assign({}, base);
     d.categoria = pt.categoria;
     d.titulo = `${pt.categoria}: ${base.titulo || 'Nova demanda'}`;
+    d.briefing = briefingDaParte_(base.briefing, pt);
     d.checklistExtra = pt.itens.map(x => '📌 ' + x);
     if (pt.prazo) {
       d.prazo = pt.prazo;
@@ -705,19 +706,26 @@ function desdobrar_(namedValues) {
   const regras = lerAba_(ABA.DESDOBRAMENTO).filter(r => r[0] === 'SIM' && r[1] && r[3]);
   if (!regras.length) return [];
   const perguntas = Object.keys(namedValues);
+  const chaveDe = chave => perguntas.find(q => norm_(q).indexOf(norm_(chave)) >= 0) || '';
   const resp = chave => {
-    const k = perguntas.find(q => norm_(q).indexOf(norm_(chave)) >= 0);
+    const k = chaveDe(chave);
     return k ? (namedValues[k] || []).join(', ').trim() : '';
   };
   const porCat = {};
+  const entrega = {}; // perguntas de entregáveis (as que geram cards): no briefing de cada card ficam só as opções dele
   regras.forEach(([, pergunta, contem, categoria, prazoPergunta, diasAntes]) => {
     const r = resp(pergunta);
     if (!r) return;
+    const k = chaveDe(pergunta);
     const opcoes = dividirOpcoes_(r);
+    const ent = entrega[k] = entrega[k] || { todas: opcoes, usadas: {} };
     const casadas = contem === '*' ? opcoes : opcoes.filter(o => norm_(o).indexOf(norm_(contem)) >= 0);
+    casadas.forEach(o => ent.usadas[o] = true);
     if (!casadas.length) return;
-    const p = porCat[categoria] = porCat[categoria] || { categoria: categoria, itens: [], prazo: '' };
+    const p = porCat[categoria] = porCat[categoria] || { categoria: categoria, itens: [], prazo: '', opcoes: {}, entrega: entrega };
     casadas.forEach(o => { if (p.itens.indexOf(o) < 0) p.itens.push(o); });
+    const op = p.opcoes[k] = p.opcoes[k] || [];
+    casadas.forEach(o => { if (op.indexOf(o) < 0) op.push(o); });
     const base = prazoPergunta ? normalizarData_(resp(prazoPergunta)) : '';
     if (base) {
       const pz = somarDias_(base, -Number(diasAntes || 0));
@@ -732,6 +740,19 @@ function desdobrar_(namedValues) {
   const evento = normalizarData_(resp('Data de Início do Evento'));
   Object.values(porCat).forEach(p => { if (!p.prazo && evento) p.prazo = somarDias_(evento, -1); });
   return Object.values(porCat);
+}
+
+/** Briefing de um card desdobrado: nas perguntas de entregáveis, mostra só as opções marcadas que cabem a esta área.
+ *  Opções marcadas que nenhuma regra atribui ficam nos cards que receberam itens da mesma pergunta, sinalizadas. */
+function briefingDaParte_(briefing, pt) {
+  return (briefing || []).map(b => {
+    const ent = pt.entrega && pt.entrega[b.p];
+    if (!ent) return b;
+    const minhas = (pt.opcoes || {})[b.p] || [];
+    if (!minhas.length) return null;
+    const soltas = ent.todas.filter(o => !ent.usadas[o]);
+    return { p: b.p, r: minhas.join(', ') + (soltas.length ? `\n⚠️ Sem área definida: ${soltas.join(', ')}` : '') };
+  }).filter(Boolean);
 }
 
 /** Divide "A, B (x, y), C" em ["A", "B (x, y)", "C"], respeitando parênteses. */

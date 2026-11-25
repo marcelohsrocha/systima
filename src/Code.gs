@@ -87,7 +87,7 @@ const CONFIG_PADRAO = [
   ['PRIORIDADES', 'Baixa | Normal | Alta | Urgente', 'Níveis de prioridade, separados por |'],
   ['PRIORIDADE_PADRAO', 'Normal', ''],
   ['COR_PRINCIPAL', '#1F3A5F', 'Cor da marca no quadro (hex)'],
-  ['COR_FUNDO', '', 'Cor de fundo do quadro para toda a equipe (hex). Vazio = padrão. Cada pessoa pode trocar a sua no botão 🎨'],
+  ['COR_FUNDO', '', 'Fundo do quadro para toda a equipe: cor (#RRGGBB) ou link https de uma imagem. Vazio = padrão. Cada pessoa pode trocar o seu no botão 🎨'],
   ['EMAIL_COORDENACAO', '', 'E-mail do gestor do setor (recebe resumo de novas demandas e atrasos)'],
   ['NOTIFICAR_RESPONSAVEL', 'SIM', 'E-mail ao responsável quando recebe uma demanda'],
   ['NOTIFICAR_SOLICITANTE', 'SIM', 'E-mail ao solicitante quando o status muda (se o formulário coletar e-mail)'],
@@ -297,9 +297,9 @@ function api(acao, p, codigo) {
   if (eu.perfil === 'Leitor') throw new Error('SEM_PERMISSAO: seu perfil é de leitura');
   p.autor = eu.nome;
   if (acao === 'configFundo') {
-    if (eu.perfil !== 'Gestor') throw new Error('SEM_PERMISSAO: só gestores definem a cor de fundo da equipe');
+    if (eu.perfil !== 'Gestor') throw new Error('SEM_PERMISSAO: só gestores definem o fundo da equipe');
     const cor = String(p.cor || '').trim();
-    if (cor && !/^#[0-9a-f]{6}$/i.test(cor)) throw new Error('Cor inválida');
+    if (cor && !fundoValido_(cor)) throw new Error('Use uma cor (#RRGGBB) ou um link de imagem que comece com https://');
     salvarConfig_('COR_FUNDO', cor);
     registrar_('—', eu.nome, 'Cor de fundo da equipe', cor || 'padrão');
     return { fundo: cor };
@@ -631,7 +631,7 @@ function board_(p) {
     .map(t => { const o = toClient_(t); o.comentarios = coment[t.id] || 0; return o; });
   return {
     config: {
-      nome: c.NOME_QUADRO, cor: c.COR_PRINCIPAL || '#1F3A5F', fundo: /^#[0-9a-f]{6}$/i.test(c.COR_FUNDO || '') ? c.COR_FUNDO : '',
+      nome: c.NOME_QUADRO, cor: c.COR_PRINCIPAL || '#1F3A5F', fundo: fundoValido_(c.COR_FUNDO) ? c.COR_FUNDO : '',
       colunas: lista_(c.COLUNAS), colunaFinal: c.COLUNA_FINAL,
       prioridades: lista_(c.PRIORIDADES), agenda: c.AGENDA_INTEGRAR === 'SIM',
       urlApp: ScriptApp.getService().getUrl() || ''
@@ -1642,6 +1642,9 @@ function cfg_() {
   if (sh) sh.getDataRange().getDisplayValues().slice(1).forEach(r => { if (r[0]) o[r[0].trim()] = String(r[1]).trim(); });
   return (_cfgCache = o);
 }
+
+/** Fundo do quadro: cor #RRGGBB ou link https de imagem. */
+function fundoValido_(v) { v = String(v || ''); return /^#[0-9a-f]{6}$/i.test(v) || (/^https:\/\/[^\s"'<>]+$/i.test(v) && v.length <= 2000); }
 
 /** Grava uma chave na aba Config (cria a linha se não existir). */
 function salvarConfig_(chave, valor) {

@@ -259,6 +259,9 @@ html.dark .rec-st.on{color:#6CE9A6}
 .sw.on{outline:2px solid var(--brand);outline-offset:2px}
 html.fundo-escuro .vazio,html.fundo-escuro main>.load,html.fundo-escuro .cal-nav .sub,html.fundo-escuro .wl>.sub{color:var(--bgMuted)}
 html.fundo-escuro .cal-nav h3{color:var(--bgTxt)}
+body{background-size:cover;background-position:center;background-attachment:fixed}
+html.fundo-foto .col{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+html.fundo-foto .wl,html.fundo-foto .cal-side{backdrop-filter:blur(8px)}
 </style>
 </head>
 <body>
@@ -271,7 +274,7 @@ html.fundo-escuro .cal-nav h3{color:var(--bgTxt)}
       <div class="sub" id="resumo">carregando…</div>
     </div>
     <div class="sp"></div>
-    <button class="btn ghost tema" onclick="abrirFundo()" title="Cor de fundo">🎨</button>
+    <button class="btn ghost tema" onclick="abrirFundo()" title="Fundo do quadro (cor ou foto)">🎨</button>
     <button class="btn ghost tema" id="btnTema" onclick="alternarTema()" title="Modo escuro">🌙</button>
     <button class="btn ghost hide-m" onclick="carregar(true)" title="Atualizar">⟳ Atualizar</button>
     <button class="btn hide-m" id="btnLimpar" style="display:none" onclick="abrirLimpeza()">🧹 Limpar</button>
@@ -679,51 +682,101 @@ renderDrawer=function(){
   const nv=$('drawer').querySelector('.dr-b');if(nv&&top)nv.scrollTop=top;
 };
 function alternarTema(){const d=document.documentElement.classList.toggle('dark');try{localStorage.setItem('qd_tema',d?'escuro':'claro')}catch(e){}iconeTema()}
-/* ---------- cor de fundo: pessoal (navegador) > da equipe (Config) > padrão do tema ---------- */
+/* ---------- fundo: pessoal (navegador) > da equipe (Config) > padrão do tema ----------
+   Valor do fundo: '' (padrão), '#rrggbb' (cor), 'https://…' (foto por link) ou 'data:image/…' (foto enviada, só no navegador) */
 const FUNDOS=[['Azul claro','#DCE8F7'],['Menta','#DDF1E6'],['Lilás','#E9E2F7'],['Rosa','#F8E1EA'],['Areia','#F3EBDD'],['Cinza','#DADDE3'],
   ['Azul-marinho','#1F3A5F'],['Verde-floresta','#1E4D3A'],['Roxo','#3B2A63'],['Vinho','#5A1F33'],['Grafite','#2B2F36'],['Preto','#111418']];
 function hexOk(c){return /^#[0-9a-f]{6}$/i.test(c||'')}
+function ehFoto(v){return /^(https:\/\/|data:image\/)/i.test(v||'')}
 function luminancia(hex){const n=parseInt(hex.slice(1),16),f=v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)};return .2126*f(n>>16&255)+.7152*f(n>>8&255)+.0722*f(n&255)}
-function aplicarFundo(cor){
-  if(cor===undefined){const p=lsGet('qd_fundo')||'';cor=p==='padrao'?'':p||(S.cfg&&S.cfg.fundo)||''}
-  const r=document.documentElement.style;
-  if(!hexOk(cor)){['--bg','--colbg','--bgTxt','--bgMuted'].forEach(v=>r.removeProperty(v));document.documentElement.classList.remove('fundo-escuro');return}
-  const escuro=luminancia(cor)<.18;
-  r.setProperty('--bg',cor);
-  // colunas acompanham o fundo: translúcidas sobre a cor escolhida, sempre legíveis
-  r.setProperty('--colbg',`color-mix(in srgb,var(--panel) ${escuro?'86%':'62%'},${cor})`);
+/** Links do Google Drive viram link direto da imagem. */
+function linkImagem(u){u=String(u||'').trim();const m=u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=\w+&)?id=)([\w-]{20,})/)||u.match(/[?&]id=([\w-]{20,})/);
+  return m&&/google\.com/.test(u)?'https://lh3.googleusercontent.com/d/'+m[1]:u}
+function fundoPessoal(){const p=lsGet('qd_fundo')||'';return p==='foto'?(lsGet('qd_foto')||''):p}
+function aplicarFundo(v){
+  if(v===undefined){const p=fundoPessoal();v=p==='padrao'?'':p||(S.cfg&&S.cfg.fundo)||''}
+  const r=document.documentElement.style,cl=document.documentElement.classList;
+  document.body.style.backgroundImage='';
+  if(ehFoto(v)){
+    // foto: véu escuro leve por cima para o texto e as colunas continuarem legíveis
+    document.body.style.backgroundImage=`linear-gradient(rgba(0,0,0,.22),rgba(0,0,0,.22)),url("${v.replace(/"/g,'%22')}")`;
+    r.setProperty('--bg','#2B2F36');r.setProperty('--colbg','color-mix(in srgb,var(--panel) 84%,transparent)');
+    r.setProperty('--bgTxt','#F2F4F7');r.setProperty('--bgMuted','rgba(242,244,247,.82)');
+    cl.add('fundo-escuro','fundo-foto');return;
+  }
+  cl.remove('fundo-foto');
+  if(!hexOk(v)){['--bg','--colbg','--bgTxt','--bgMuted'].forEach(x=>r.removeProperty(x));cl.remove('fundo-escuro');return}
+  const escuro=luminancia(v)<.18;
+  r.setProperty('--bg',v);
+  r.setProperty('--colbg',`color-mix(in srgb,var(--panel) ${escuro?'86%':'62%'},${v})`);
   r.setProperty('--bgTxt',escuro?'#F2F4F7':'#101828');r.setProperty('--bgMuted',escuro?'rgba(242,244,247,.75)':'#475467');
-  document.documentElement.classList.toggle('fundo-escuro',escuro);
+  cl.toggle('fundo-escuro',escuro);
 }
 function abrirFundo(){
-  const pessoal=lsGet('qd_fundo')||'',equipe=(S.cfg&&S.cfg.fundo)||'',atual=pessoal==='padrao'?'':pessoal||equipe;
+  const p=fundoPessoal(),equipe=(S.cfg&&S.cfg.fundo)||'',atual=p==='padrao'?'':p||equipe;
   S.fundoTmp=atual;
   const sw=(nome,c)=>`<button class="sw${c===atual?' on':''}" data-c="${c}" title="${esc(nome)}" style="background:${c||'var(--panel)'}" onclick="escolherFundo('${c}')">${c?'':'<span>Padrão</span>'}</button>`;
-  modal(`<h3>🎨 Cor de fundo</h3>
+  const origem=p==='padrao'?'o fundo padrão':p?(ehFoto(p)?'uma foto só sua':'uma cor só sua'):equipe?(ehFoto(equipe)?'a foto da equipe':'a cor da equipe'):'o fundo padrão';
+  modal(`<h3>🎨 Fundo do quadro</h3>
     <div class="sws">${sw('Padrão','')}${FUNDOS.map(([n,c])=>sw(n,c)).join('')}</div>
     <div style="display:flex;align-items:center;gap:10px;margin:14px 0 4px">
       <label style="margin:0;display:flex;align-items:center;gap:8px;cursor:pointer"><input type="color" id="fundoLivre" value="${hexOk(atual)?atual:'#DCE8F7'}" oninput="escolherFundo(this.value)" style="width:42px;height:32px;border:1px solid var(--line);border-radius:8px;padding:2px;background:var(--panel)"> Escolher outra cor</label>
-      <span class="sub" id="fundoHex">${atual||'padrão'}</span>
+      <span class="sub" id="fundoHex">${hexOk(atual)?atual:''}</span>
     </div>
-    <p class="sub" style="margin:8px 0 14px">${pessoal?'Você está usando uma cor só sua.':equipe?'Você está usando a cor da equipe.':'Você está usando o fundo padrão.'} A cor “só para mim” fica salva neste navegador.</p>
+    <h5 style="margin:16px 0 8px">🖼️ Foto de fundo</h5>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <label class="btn" style="margin:0;cursor:pointer">📤 Enviar foto<input type="file" accept="image/*" hidden onchange="lerFotoFundo(this)"></label>
+      <input class="inp" id="fundoLink" style="flex:1;min-width:180px" placeholder="ou cole um link de imagem (Drive, site…)" value="${ehFoto(atual)&&!/^data:/.test(atual)?esc(atual):''}" onkeydown="if(event.key==='Enter')usarLinkFundo()">
+      <button class="btn" onclick="usarLinkFundo()">Usar link</button>
+    </div>
+    <p class="sub" id="fundoAviso" style="margin:8px 0 0">Foto enviada fica só neste navegador. Para a equipe toda, use um link (no Drive: compartilhe como “Qualquer pessoa com o link”).</p>
+    <p class="sub" style="margin:10px 0 14px">Agora você está usando ${origem}.</p>
     <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
       <button class="btn" onclick="cancelarFundo()">Cancelar</button>
-      ${gestor()?'<button class="btn" onclick="salvarFundo(true)">👥 Para toda a equipe</button>':''}
+      ${gestor()?'<button class="btn" id="btnFundoEquipe" onclick="salvarFundo(true)">👥 Para toda a equipe</button>':''}
       <button class="btn pri" onclick="salvarFundo(false)">Só para mim</button>
     </div>`);
   $('modal').onclick=e=>{if(e.target.id==='modal')cancelarFundo()};
+  atualizarBtnEquipe();
 }
+function atualizarBtnEquipe(){const b=$('btnFundoEquipe');if(!b)return;const loc=/^data:/.test(S.fundoTmp||'');b.disabled=loc;b.title=loc?'Foto enviada do computador vale só para você. Para a equipe, use um link.':''}
 function escolherFundo(c){S.fundoTmp=c;aplicarFundo(c||'');document.querySelectorAll('.sw').forEach(b=>b.classList.toggle('on',b.dataset.c===c));
-  const h=$('fundoHex');if(h)h.textContent=c||'padrão';if(c&&$('fundoLivre'))$('fundoLivre').value=c}
+  const h=$('fundoHex');if(h)h.textContent=hexOk(c)?c:'';if(hexOk(c)&&$('fundoLivre'))$('fundoLivre').value=c;atualizarBtnEquipe()}
+function usarLinkFundo(){
+  const u=linkImagem($('fundoLink').value);
+  if(!/^https:\/\/\S+$/i.test(u)){toast('Cole um link que comece com https://');return}
+  const img=new Image();img.onload=()=>{escolherFundo(u);$('fundoLink').value=u;toast('Prévia aplicada. Salve para manter.')};
+  img.onerror=()=>toast('Não consegui abrir essa imagem. No Drive, confira se está compartilhada com “Qualquer pessoa com o link”.');
+  img.src=u;
+}
+function lerFotoFundo(inp){
+  const f=inp.files&&inp.files[0];if(!f)return;
+  if(!/^image\//.test(f.type)){toast('Escolha um arquivo de imagem');return}
+  const rd=new FileReader();
+  rd.onload=()=>{const img=new Image();img.onload=()=>{
+    // reduz para no máx. 1920px de largura e JPEG, para caber no navegador
+    const k=Math.min(1,1920/img.width,1200/img.height),cv=document.createElement('canvas');
+    cv.width=Math.round(img.width*k);cv.height=Math.round(img.height*k);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+    let q=.82,d=cv.toDataURL('image/jpeg',q);while(d.length>1.8e6&&q>.4){q-=.1;d=cv.toDataURL('image/jpeg',q)}
+    escolherFundo(d);toast('Prévia aplicada. Clique em “Só para mim” para salvar.');
+  };img.onerror=()=>toast('Não consegui ler essa imagem');img.src=rd.result};
+  rd.readAsDataURL(f);
+}
 function cancelarFundo(){$('modal').onclick=null;fecharModal();aplicarFundo()}
 async function salvarFundo(equipe){
-  const c=S.fundoTmp||'';$('modal').onclick=null;
+  const c=S.fundoTmp||'',time=(S.cfg&&S.cfg.fundo)||'';$('modal').onclick=null;
   if(equipe){
+    if(/^data:/.test(c)){toast('Foto enviada do computador vale só para você. Para a equipe, use um link.');return}
     try{const r=await call('configFundo',{cor:c});S.cfg.fundo=r.fundo}catch(e){toast('Não foi possível salvar: '+msgErro(e));return}
-    lsSet('qd_fundo','');fecharModal();aplicarFundo();toast(c?'🎨 Cor de fundo definida para toda a equipe':'🎨 Equipe voltou ao fundo padrão');
-  }else{
-    lsSet('qd_fundo',c===((S.cfg&&S.cfg.fundo)||'')?'':c||'padrao');fecharModal();aplicarFundo();toast(c?'🎨 Cor de fundo salva para você':'🎨 Fundo padrão');
+    lsSet('qd_fundo','');fecharModal();aplicarFundo();toast(c?'🎨 Fundo definido para toda a equipe':'🎨 Equipe voltou ao fundo padrão');
+    return;
   }
+  if(/^data:/.test(c)){
+    try{localStorage.setItem('qd_foto',c);localStorage.setItem('qd_fundo','foto')}
+    catch(e){toast('A foto é grande demais para guardar neste navegador. Tente uma menor ou use um link.');return}
+  }else lsSet('qd_fundo',c===time?'':c||'padrao');
+  if(!/^data:/.test(c))lsSet('qd_foto','');
+  fecharModal();aplicarFundo();toast(ehFoto(c)?'🖼️ Foto de fundo salva para você':c?'🎨 Cor de fundo salva para você':'🎨 Fundo padrão');
 }
 function iconeTema(){const b=$('btnTema');if(b){const d=document.documentElement.classList.contains('dark');b.textContent=d?'☀️':'🌙';b.title=d?'Modo claro':'Modo escuro'}}
 setTimeout(iconeTema,0);

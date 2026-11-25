@@ -25,7 +25,7 @@ As demandas chegam pelo **Google Forms**, viram cards num **Kanban**, são distr
 | **Automações** | Regras "Quando → Se → Então" (estilo Butler/ClickUp) configuradas numa aba |
 | **Modelos por categoria** | Responsável padrão, checklist e prazo (SLA) automáticos |
 | **Demandas recorrentes** | Criadas direto no quadro: todos os dias, toda semana, a cada 2 semanas, todo mês ou a cada N dias. Pausar e retomar pelo card ou pelo painel 🔁 Recorrentes |
-| **Cor de fundo** | Botão 🎨: cores prontas ou qualquer cor. Cada pessoa escolhe a sua (fica no navegador); o gestor pode definir uma para a equipe toda (chave `COR_FUNDO` na aba Config). As colunas se ajustam à cor para continuar legíveis |
+| **Fundo do quadro** | Botão 🎨: cores prontas, qualquer cor ou foto (enviada do computador, fica só no navegador; ou link de imagem, inclusive do Drive). Cada pessoa escolhe a sua (fica no navegador); o gestor pode definir uma para a equipe toda (chave `COR_FUNDO` na aba Config, cor ou link de imagem). As colunas se ajustam à cor para continuar legíveis |
 | **Avisos** | Pop-up de nova demanda, e-mails (responsável, solicitante, coordenação, @menções), resumo diário às 7h e webhook (Make/Z-API para WhatsApp) |
 | **Cronômetro e estimativas** | Tempo gasto × estimado e carga semanal × capacidade de cada pessoa |
 | **Histórico, comentários, anexos e checklists** | Por card |

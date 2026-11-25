@@ -299,8 +299,9 @@ function api(acao, p, codigo) {
   if (acao === 'agenda') return agendaEventos_(p.ini, p.fim);
   if (acao === 'chatListar') return chatListar_(p.desde);
   // valem para qualquer pessoa logada, inclusive Leitor
-  if ((acao === 'preferencias' || acao === 'chatEnviar') && !me) throw new Error('LOGIN');
+  if ((acao === 'preferencias' || acao === 'chatEnviar' || acao === 'avatar') && !me) throw new Error('LOGIN');
   if (acao === 'preferencias') return salvarPreferencias_(me, p);
+  if (acao === 'avatar') return salvarAvatar_(me, p);
   if (acao === 'chatEnviar') { const lk = LockService.getScriptLock(); lk.waitLock(15000); try { return chatEnviar_(me, p.texto, p.desde); } finally { lk.releaseLock(); } }
 
   // daqui pra baixo: escrita
@@ -654,7 +655,7 @@ function board_(p) {
       urlApp: ScriptApp.getService().getUrl() || ''
     },
     categorias: categorias_(),
-    equipe: equipe_().map(m => ({ nome: m.nome, funcao: m.funcao, capacidade: m.capacidade, perfil: m.perfil })),
+    equipe: equipe_().map(m => ({ nome: m.nome, funcao: m.funcao, capacidade: m.capacidade, perfil: m.perfil, foto: m.foto })),
     tarefas: tarefas,
     recorrencias: lerRecorrentes_().map(recClient_),
     chat: chatInfo_(),
@@ -1872,7 +1873,8 @@ function equipe_(todos) {
     perfil: ['Gestor', 'Membro', 'Leitor'].indexOf(r[4]) >= 0 ? r[4] : 'Membro', pin: r[5] || '',
     ativo: String(r[6] || 'SIM').toUpperCase() !== 'NAO',
     interinoAte: r[4] !== 'Gestor' && /^\d{4}-\d{2}-\d{2}$/.test(String(r[7] || '')) && String(r[7]) >= hoje_() ? String(r[7]) : '',
-    avisos: String(r[8] || 'SIM').toUpperCase() !== 'NAO', resumo: String(r[9] || 'SIM').toUpperCase() !== 'NAO'
+    avisos: String(r[8] || 'SIM').toUpperCase() !== 'NAO', resumo: String(r[9] || 'SIM').toUpperCase() !== 'NAO',
+    foto: /^data:image\/(jpeg|png|webp);base64,/.test(String(r[10] || '')) ? String(r[10]) : ''
   })).map(m => { m.perfilBase = m.perfil; if (m.interinoAte) m.perfil = 'Gestor'; return m; })
     .filter(m => todos || m.ativo);
 }
@@ -1887,6 +1889,22 @@ function semQuemDesligou_(emails) {
  *  PREFERÊNCIAS DE CADA PESSOA (aba Equipe, colunas I e J)
  * ============================================================ */
 const CAB_PREFS = ['Avisos por e-mail', 'Resumo semanal'];
+
+/** Foto de perfil (aba Equipe, coluna K): imagem pequena já reduzida no navegador. Cada pessoa troca a sua; gestor troca a de qualquer um. */
+function salvarAvatar_(eu, p) {
+  const foto = String(p.foto || '');
+  if (foto && (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(foto) || foto.length > 45000)) throw new Error('Imagem inválida ou grande demais');
+  const alvo = p.pessoa && norm_(p.pessoa) !== norm_(eu.nome) ? p.pessoa : eu.nome;
+  if (alvo !== eu.nome && eu.perfil !== 'Gestor') throw new Error('SEM_PERMISSAO: só gestores trocam a foto de outra pessoa');
+  const sh = ss_().getSheetByName(ABA.EQUIPE);
+  if (!sh.getRange(1, 11).getDisplayValue()) sh.getRange(1, 11).setValue('Foto (avatar)').setFontWeight('bold').setBackground('#1F3A5F').setFontColor('#FFFFFF');
+  const nomes = sh.getRange(1, 1, sh.getLastRow(), 1).getDisplayValues().map(r => norm_(r[0]));
+  const linha = nomes.indexOf(norm_(alvo)) + 1;
+  if (linha < 2) throw new Error('Pessoa não encontrada na aba Equipe');
+  sh.getRange(linha, 11).setValue(foto);
+  registrar_('—', eu.nome, foto ? 'Foto de perfil' : 'Removeu foto de perfil', alvo);
+  return { nome: sh.getRange(linha, 1).getDisplayValue(), foto: foto };
+}
 function salvarPreferencias_(eu, p) {
   const sh = ss_().getSheetByName(ABA.EQUIPE);
   CAB_PREFS.forEach((h, i) => { if (!sh.getRange(1, 9 + i).getDisplayValue()) sh.getRange(1, 9 + i).setValue(h).setFontWeight('bold').setBackground('#1F3A5F').setFontColor('#FFFFFF'); });

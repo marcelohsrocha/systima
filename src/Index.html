@@ -80,6 +80,8 @@ main{flex:1;overflow:auto;position:relative}
 .av{width:24px;height:24px;border-radius:50%;display:inline-grid;place-items:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0}
 .av.lg{width:30px;height:30px;font-size:12px}
 .av.none{background:var(--sub);color:var(--soft)}
+.av.foto{background-size:cover;background-position:center;background-color:var(--sub)}
+.av-xl{width:72px;height:72px;font-size:24px}
 .prog{height:4px;background:var(--sub);border-radius:4px;overflow:hidden;margin-top:9px}
 .prog>i{display:block;height:100%;background:var(--green)}
 .timer-on{color:var(--red);font-weight:600;animation:pulse 1.6s infinite}
@@ -275,6 +277,7 @@ html.dark .rec-st.on{color:#6CE9A6}
 .doc-t{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .doc-d{font-size:13px;color:var(--text2);line-height:1.4}
 .doc-f{display:flex;align-items:center;margin-top:auto}
+.chat-badge[hidden]{display:none!important}
 .chat-badge{position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;border-radius:10px;font-size:11px;font-weight:700;min-width:18px;height:18px;padding:0 5px;display:grid;place-items:center}
 .chat{position:fixed;top:0;right:0;bottom:0;width:min(400px,100%);background:var(--panel);z-index:22;transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column;box-shadow:-8px 0 24px rgba(16,24,40,.14);border-left:1px solid var(--line)}
 .chat.on{transform:none}
@@ -446,7 +449,9 @@ function cat(n){return S.cats.find(c=>c.nome===n)||{nome:n||'Sem categoria',cor:
 function tarefa(id){return S.tarefas.find(t=>t.id===id)}
 function corPessoa(n){if(!n)return '#D0D5DD';let h=0;for(const c of n)h=(h*31+c.charCodeAt(0))%360;return `hsl(${h} 55% 45%)`}
 function iniciais(n){return String(n||'?').split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase()}
-function av(n,lg){return n?`<span class="av ${lg?'lg':''}" style="background:${corPessoa(n)}" title="${esc(n)}">${esc(iniciais(n))}</span>`:`<span class="av none ${lg?'lg':''}" title="Sem responsável">?</span>`}
+function fotoDe(n){const m=n&&(S.equipe||[]).find(x=>x.nome===n);return m&&m.foto||''}
+function av(n,lg){if(!n)return `<span class="av none ${lg?'lg':''}" title="Sem responsável">?</span>`;const f=fotoDe(n);
+  return f?`<span class="av foto ${lg?'lg':''}" style="background-image:url('${f}')" title="${esc(n)}"></span>`:`<span class="av ${lg?'lg':''}" style="background:${corPessoa(n)}" title="${esc(n)}">${esc(iniciais(n))}</span>`}
 function concluida(t){return t.status===S.cfg.colunaFinal}
 function situacaoPrazo(t){
   if(!t.prazo)return '';
@@ -1192,7 +1197,7 @@ async function abrirEquipe(){
 function renderEquipe(info){
   const L=S.eqLista||[];const ativos=L.filter(p=>p.ativo),inativos=L.filter(p=>!p.ativo);
   const linha=p=>{const i=L.indexOf(p);return `<tr style="cursor:default;${p.ativo?'':'opacity:.55'}">
-    <td style="white-space:nowrap">${av(p.nome)} <b>${esc(p.nome)}</b><div class="sub" style="margin-left:30px;white-space:normal">${esc(p.funcao||'')}</div></td>
+    <td style="white-space:nowrap"><label title="Trocar a foto de ${esc(p.nome)}" style="cursor:pointer;margin:0;display:inline">${av(p.nome)}<input type="file" accept="image/*" hidden onchange="enviarAvatar(this,'${esc(p.nome).replace(/'/g,'&#39;')}')"></label> <b>${esc(p.nome)}</b><div class="sub" style="margin-left:30px;white-space:normal">${esc(p.funcao||'')}</div></td>
     <td><span class="label">${esc(p.perfil)}</span>${p.interinoAte?`<div class="sub" style="color:var(--amber);font-weight:600;margin-top:3px">🛡️ Gestor interino até ${fmtBR(p.interinoAte)}</div>`:''}</td>
     <td class="sub">${esc(p.email||'— sem e-mail —')}</td>
     <td style="white-space:nowrap"><code>••••</code> <button class="btn ghost sm" onclick="this.previousElementSibling.textContent='${esc(p.pin||'—')}'">ver</button></td>
@@ -1288,12 +1293,35 @@ function sair(){S.eu='';S.pin='';S.me=null;lsSet('qd_eu','');lsSet('qd_pin','');
 function menuEu(){
   if(!S.me){login();return}
   const semEmail=S.me.email===false;
-  modal(`<h3>${av(S.me.nome,1)} ${esc(S.me.nome)}</h3><p class="sub">Perfil: <b>${esc(S.me.perfil)}</b>${S.me.interinoAte?' (interino até '+fmtBR(S.me.interinoAte)+')':''}. ${S.me.perfil==='Gestor'?'Acesso total.':S.me.perfil==='Membro'?'Você cria demandas para qualquer pessoa, move e edita as suas (e as sem responsável), pode repassá-las e comenta em todas.':'Você só visualiza.'}</p>
+  const minhaFoto=fotoDe(S.me.nome);
+  modal(`<div style="display:flex;gap:14px;align-items:center;margin-bottom:10px">
+    <span class="av av-xl ${minhaFoto?'foto':''}" style="${minhaFoto?`background-image:url('${minhaFoto}')`:`background:${corPessoa(S.me.nome)}`}">${minhaFoto?'':esc(iniciais(S.me.nome))}</span>
+    <div><h3 style="margin:0 0 6px">${esc(S.me.nome)}</h3><div style="display:flex;gap:6px;flex-wrap:wrap">
+      <label class="btn sm" style="margin:0;cursor:pointer">📷 ${minhaFoto?'Trocar foto':'Colocar foto'}<input type="file" accept="image/*" hidden onchange="enviarAvatar(this)"></label>
+      ${minhaFoto?'<button class="btn sm" onclick="salvarAvatar(\'\')">Remover</button>':''}</div></div></div>
+  <p class="sub">Perfil: <b>${esc(S.me.perfil)}</b>${S.me.interinoAte?' (interino até '+fmtBR(S.me.interinoAte)+')':''}. ${S.me.perfil==='Gestor'?'Acesso total.':S.me.perfil==='Membro'?'Você cria demandas para qualquer pessoa, move e edita as suas (e as sem responsável), pode repassá-las e comenta em todas.':'Você só visualiza.'}</p>
   <h5 style="margin:16px 0 4px">📧 E-mails que você recebe</h5>
   ${semEmail?'<p class="sub" style="color:var(--amber)">Seu e-mail não está cadastrado na aba Equipe, então você não recebe nenhum e-mail. Peça a um gestor para cadastrar.</p>':''}
   <label class="tg"><input type="checkbox" ${S.me.avisos!==false?'checked':''} onchange="salvarPref('avisos',this.checked)"><span><b>Aviso a cada demanda</b><br><span class="sub">Nova demanda para você, comentários, menções e prazo vencendo.</span></span></label>
   <label class="tg"><input type="checkbox" ${S.me.resumo!==false?'checked':''} onchange="salvarPref('resumo',this.checked)"><span><b>Resumo semanal</b><br><span class="sub">Toda segunda de manhã: o que está em atraso, muito perto do prazo, precisa de atenção e está no prazo.</span></span></label>
   <div style="text-align:right;margin-top:14px"><button class="btn" onclick="fecharModal()">Fechar</button> <button class="btn" onclick="sair()">Sair / trocar de pessoa</button></div>`);
+}
+function enviarAvatar(inp,pessoa){
+  const f=inp.files&&inp.files[0];if(!f)return;if(!/^image\//.test(f.type)){toast('Escolha uma imagem');return}
+  const rd=new FileReader();rd.onload=()=>{const img=new Image();img.onload=()=>{
+    // recorta o centro em quadrado e reduz para 128px
+    const lado=Math.min(img.width,img.height),cv=document.createElement('canvas');cv.width=cv.height=128;
+    cv.getContext('2d').drawImage(img,(img.width-lado)/2,(img.height-lado)/2,lado,lado,0,0,128,128);
+    let q=.85,d=cv.toDataURL('image/jpeg',q);while(d.length>40000&&q>.4){q-=.1;d=cv.toDataURL('image/jpeg',q)}
+    salvarAvatar(d,pessoa);
+  };img.onerror=()=>toast('Não consegui ler essa imagem');img.src=rd.result};rd.readAsDataURL(f);
+}
+async function salvarAvatar(foto,pessoa){
+  let r;try{r=await call('avatar',{foto,pessoa:pessoa||''})}catch(e){toast('Não foi possível salvar: '+msgErro(e));return}
+  const m=S.equipe.find(x=>x.nome===r.nome);if(m)m.foto=r.foto;
+  atualizarEu();render();if(S.aberto)renderDrawer();
+  if($('modal').classList.contains('on')){if(pessoa)renderEquipe();else menuEu()}
+  toast(foto?'📷 Foto atualizada':'Foto removida');
 }
 async function salvarPref(k,v){
   try{const r=await call('preferencias',{[k]:v});S.me.avisos=r.avisos;S.me.resumo=r.resumo;
@@ -1471,6 +1499,8 @@ function mockApi(acao,p){
   const chatL=d=>{const ini=Math.max(Number(d)||0,DB.chat.length-200);return {total:DB.chat.length,msgs:DB.chat.slice(ini).map((m,i)=>({...m,n:ini+i+1,id:'m'+(ini+i)}))}};
   if(acao==='chatListar')return JSON.parse(JSON.stringify(chatL(p.desde)));
   if(acao==='chatEnviar'){const t=String(p.texto||'').trim();if(!t)throw new Error('Mensagem vazia');DB.chat.push({data:agora(),autor:me.nome,texto:t});return JSON.parse(JSON.stringify(chatL(p.desde)))}
+  if(acao==='equipeListar'){if(me.perfil!=='Gestor')throw new Error('SEM_PERMISSAO');return {lista:DB.equipe.map(m=>({...m,email:m.email||'',ativo:true,abertas:DB.tarefas.filter(t=>t.responsavel===m.nome).length}))}}
+  if(acao==='avatar'){const alvo=p.pessoa||me.nome;if(alvo!==me.nome&&me.perfil!=='Gestor')throw new Error('SEM_PERMISSAO: só gestores trocam a foto de outra pessoa');const m=DB.equipe.find(x=>x.nome===alvo);m.foto=p.foto||'';return {nome:m.nome,foto:m.foto}}
   if(acao==='preferencias'){if('avisos' in p)me.avisos=!!p.avisos;if('resumo' in p)me.resumo=!!p.resumo;return {avisos:me.avisos!==false,resumo:me.resumo!==false}}
   if(!['board','detalhes'].includes(acao)){
     if(me.perfil==='Leitor')throw new Error('SEM_PERMISSAO: seu perfil é de leitura');

@@ -183,7 +183,9 @@ function configurarPlanilha() {
   gerarPins_();
   criarAba_(ss, ABA.MAPEAMENTO, ['Campo do sistema', 'Pergunta do formulário (texto exato)', 'Dica'], MAPEAMENTO_PADRAO);
   const des = criarAba_(ss, ABA.DESDOBRAMENTO, ['Ativa', 'Pergunta do formulário (contém)', 'Se a resposta contém (* = qualquer)', 'Gera card na categoria', 'Prazo pela pergunta', 'Dias antes'], DESDOBRAMENTO_PADRAO);
-  if (!des.getRange(1, 7).getDisplayValue()) des.getRange(1, 7).setValue('Item no card (opcional)').setFontWeight('bold').setBackground('#1F3A5F').setFontColor('#FFFFFF');
+  ['Item no card (opcional)', 'Responsável (opcional)', 'A partir de (opcional)'].forEach((h, i) => {
+    if (!des.getRange(1, 7 + i).getDisplayValue()) des.getRange(1, 7 + i).setValue(h).setFontWeight('bold').setBackground('#1F3A5F').setFontColor('#FFFFFF');
+  });
   criarAba_(ss, ABA.AUTOMACOES, ['Ativa', 'Quando', 'Valor do gatilho', 'Se campo', 'For igual a', 'Então', 'Valor da ação'], AUTOMACOES_PADRAO);
   criarAba_(ss, ABA.RECORRENTES, CAB_RECORRENTES, RECORRENTES_PADRAO);
   const t = criarAba_(ss, ABA.TAREFAS, CAMPOS.map(c => c[1]), []);
@@ -686,10 +688,13 @@ function criarDoFormulario_(namedValues, autor, origem) {
   const partes = desdobrar_(namedValues);
   if (!partes.length) { criarTarefa_(base, autor, origem); return 1; }
   const hoje = hoje_();
+  const porCategoria = {};
+  partes.forEach(pt => porCategoria[pt.categoria] = (porCategoria[pt.categoria] || 0) + 1);
   partes.forEach(pt => {
     const d = Object.assign({}, base);
     d.categoria = pt.categoria;
-    d.titulo = `${pt.categoria}: ${base.titulo || 'Nova demanda'}`;
+    if (pt.responsavel) d.responsavel = pt.responsavel;
+    d.titulo = `${pt.categoria}: ${base.titulo || 'Nova demanda'}` + (porCategoria[pt.categoria] > 1 && pt.responsavel ? ` (${pt.responsavel})` : '');
     d.briefing = briefingDaParte_(base.briefing, pt);
     d.checklistExtra = pt.itens.map(x => '📌 ' + x);
     if (pt.prazo) {
@@ -698,7 +703,7 @@ function criarDoFormulario_(namedValues, autor, origem) {
       else if (pt.prazo <= somarDias_(hoje, 1)) d.prioridade = 'Alta';
     } else d.prazo = '';
     d.etiquetas = partes.length > 1 ? `evento (${partes.length} áreas)` : '';
-    criarTarefa_(d, autor, origem ? origem + '|' + pt.categoria : '');
+    criarTarefa_(d, autor, origem ? origem + '|' + pt.categoria + (pt.responsavel ? '|' + pt.responsavel : '') : '');
   });
   return partes.length;
 }
@@ -714,8 +719,10 @@ function desdobrar_(namedValues) {
   };
   const porCat = {};
   const entrega = {}; // perguntas de entregáveis (as que geram cards): no briefing de cada card ficam só as opções dele
-  // 7ª coluna opcional "Item no card": troca o texto da opção marcada (ex.: "Material gráfico (Certificados, Panfleto, Banner)" → "Certificados")
-  regras.forEach(([, pergunta, contem, categoria, prazoPergunta, diasAntes, item]) => {
+  const hoje = hoje_();
+  // Colunas opcionais: G "Item no card" troca o texto da opção marcada (ex.: "Material gráfico (...)" → "Certificados");
+  // H "Responsável" manda o card para essa pessoa em vez do responsável da categoria; I "A partir de" faz o H valer só desde essa data.
+  regras.forEach(([, pergunta, contem, categoria, prazoPergunta, diasAntes, item, responsavel, aPartir]) => {
     const r = resp(pergunta);
     if (!r) return;
     const k = chaveDe(pergunta);
@@ -724,7 +731,10 @@ function desdobrar_(namedValues) {
     const casadas = contem === '*' ? opcoes : opcoes.filter(o => norm_(o).indexOf(norm_(contem)) >= 0);
     casadas.forEach(o => ent.usadas[o] = true);
     if (!casadas.length) return;
-    const p = porCat[categoria] = porCat[categoria] || { categoria: categoria, itens: [], prazo: '', opcoes: {}, entrega: entrega };
+    const desde = aPartir ? normalizarData_(aPartir) : '';
+    const resp_ = String(responsavel || '').trim() && (!desde || hoje >= desde) ? String(responsavel).trim() : '';
+    const chave = categoria + '|' + resp_;
+    const p = porCat[chave] = porCat[chave] || { categoria: categoria, responsavel: resp_, itens: [], prazo: '', opcoes: {}, entrega: entrega };
     const itens = String(item || '').trim() ? [String(item).trim()] : casadas;
     itens.forEach(o => { if (p.itens.indexOf(o) < 0) p.itens.push(o); });
     const op = p.opcoes[k] = p.opcoes[k] || [];
@@ -1292,10 +1302,13 @@ function recVence_(r, iso) {
       return df >= 0 && df % passo === 0;
     }
     case 'Mensal': {
+      const [a, m, d] = iso.split('-').map(Number);
+      const ultimo = new Date(Date.UTC(a, m, 0)).getUTCDate();
+      const nth = nthDia_(r.dia);
+      if (nth) return diaSemana_(iso) === nth.wd && (nth.n === -1 ? d + 7 > ultimo : Math.ceil(d / 7) === nth.n); // "1º dom", "último sex"
       const alvo = Number(r.dia) || (base ? Number(base.slice(8, 10)) : 0);
       if (!alvo) return false;
-      const [a, m, d] = iso.split('-').map(Number);
-      return d === Math.min(alvo, new Date(Date.UTC(a, m, 0)).getUTCDate()); // dia 31 vira o último dia do mês
+      return d === Math.min(alvo, ultimo); // dia 31 vira o último dia do mês
     }
     case 'Personalizada': {
       const n = Math.floor(Number(r.aCada));
@@ -1305,6 +1318,17 @@ function recVence_(r, iso) {
   }
   return false;
 }
+
+/** "1º dom", "2 seg", "primeiro domingo", "último sex" → { n: 1..5 ou -1, wd: 0..6 }. Senão null. */
+function nthDia_(dia) {
+  let s = norm_(dia).replace(/[º°ª]/g, '');
+  s = s.replace(/^primeir\w*/, '1').replace(/^segund\w*(?=\s)/, '2').replace(/^terceir\w*/, '3').replace(/^quart\w*(?=\s)/, '4').replace(/^quint\w*(?=\s)/, '5').replace(/^ultim\w*/, 'u');
+  const m = s.match(/^([1-5u])\s*[oa]?\s+(dom|seg|ter|qua|qui|sex|sab)/);
+  return m ? { n: m[1] === 'u' ? -1 : Number(m[1]), wd: DIAS_SEMANA.indexOf(m[2]) } : null;
+}
+
+/** Prazo (dias) negativo = antecedência: o card nasce N dias antes da data e vence nela. */
+function recAntecedencia_(r) { const n = Number(r.prazoDias); return r.prazoDias !== '' && n < 0 ? -n : 0; }
 
 function recProxima_(r, desde) {
   for (let i = 0; i <= 400; i++) { const d = isoMais_(desde, i); if (recVence_(r, d)) return d; }
@@ -1321,7 +1345,11 @@ function recTexto_(r) {
     case 'Diária': return 'Todos os dias';
     case 'Semanal': return nomeDia ? todo + nomeDia : 'Semanal';
     case 'Quinzenal': return 'A cada 2 semanas' + (nomeDia ? ` (${nomeDia})` : '');
-    case 'Mensal': { const dm = Number(r.dia) || (base ? Number(base.slice(8, 10)) : 0); return dm ? `Todo dia ${dm} do mês` + (dm > 28 ? ' (ou o último dia)' : '') : 'Mensal'; }
+    case 'Mensal': {
+      const nth = nthDia_(r.dia);
+      if (nth) { const masc = nth.wd === 0 || nth.wd === 6; return (masc ? 'Todo ' : 'Toda ') + (nth.n === -1 ? (masc ? 'último ' : 'última ') : nth.n + (masc ? 'º ' : 'ª ')) + DIAS_SEMANA_NOME[nth.wd] + ' do mês'; }
+      const dm = Number(r.dia) || (base ? Number(base.slice(8, 10)) : 0); return dm ? `Todo dia ${dm} do mês` + (dm > 28 ? ' (ou o último dia)' : '') : 'Mensal';
+    }
     case 'Personalizada': { const n = Math.floor(Number(r.aCada)); return n === 1 ? 'Todos os dias' : `A cada ${n} dias`; }
   }
   return r.freq || '—';
@@ -1331,6 +1359,7 @@ function recClient_(r) {
   const hoje = hoje_();
   let desde = r.ultima && r.ultima >= hoje ? isoMais_(r.ultima, 1) : hoje;
   if (r.inicio && r.inicio > desde) desde = r.inicio;
+  desde = isoMais_(desde, recAntecedencia_(r)); // com antecedência, mostra a próxima data de entrega ainda não criada
   return {
     id: r.id, ativa: r.ativa === 'SIM', titulo: r.titulo, categoria: r.categoria, responsavel: r.responsavel,
     freq: r.freq, dia: r.dia, aCada: r.aCada, inicio: r.inicio, ultima: r.ultima, prazoDias: r.prazoDias,
@@ -1408,12 +1437,14 @@ function gerarRecorrentes_() {
   regras.forEach(r => {
     if (r.ativa !== 'SIM' || !r.freq) return;
     // ocorrência mais recente ainda não criada: entre a última criação (ou o início) e hoje
+    // (com antecedência, o card do dia X nasce em X − N dias)
+    const ant = recAntecedencia_(r);
     let occ = '';
     for (let k = 0; k <= 31; k++) {
       const d = isoMais_(hoje, -k);
       if (r.ultima && d <= r.ultima) break;
       if (r.inicio && d < r.inicio) break;
-      if (recVence_(r, d)) { occ = d; break; }
+      if (recVence_(r, isoMais_(d, ant))) { occ = isoMais_(d, ant); break; }
       if (!r.ultima && !r.inicio) break; // linha antiga sem histórico: só olha hoje
     }
     if (!occ) return;
@@ -1421,11 +1452,11 @@ function gerarRecorrentes_() {
     const origem = 'rec:' + r.id + ':' + occ;
     if (!jaExiste[origem]) {
       const cat = combinarCategoria_(r.categoria, cats);
-      const prazo = r.prazoDias !== '' && !isNaN(Number(r.prazoDias)) ? isoMais_(occ, Number(r.prazoDias))
+      const prazo = ant ? occ : r.prazoDias !== '' && !isNaN(Number(r.prazoDias)) ? isoMais_(occ, Number(r.prazoDias))
         : cat && cat.sla ? isoMais_(occ, cat.sla) : '';
       criarTarefa_({
         titulo: r.titulo + ' — ' + ddMM_(occ), categoria: r.categoria, responsavel: r.responsavel,
-        prioridade: r.prioridade, inicio: occ, prazo: prazo, descricao: r.descricao, solicitante: 'Recorrente'
+        prioridade: r.prioridade, inicio: ant ? hoje : occ, prazo: prazo, descricao: r.descricao, solicitante: 'Recorrente'
       }, '🔁 Recorrência', origem);
       n++;
     }

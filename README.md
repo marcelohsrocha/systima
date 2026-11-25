@@ -102,7 +102,7 @@ clasp push
 | **Equipe** | Nome, e-mail, função, horas por semana, perfil, PIN, ativo e "gestor interino até" |
 | **Categorias** | Responsável padrão, cor, SLA (dias) e checklist padrão |
 | **Mapeamento** | Qual pergunta do Forms alimenta cada campo do card |
-| **Desdobramento** | Regras para uma resposta gerar vários cards, com a categoria e o prazo de cada um. No briefing de cada card, as perguntas de entregáveis mostram só as opções daquela área. A coluna opcional **Item no card** troca o texto da opção (ex.: a opção "Material gráfico (Certificados, Panfleto, Banner)" vira "Certificados" num card e "Panfleto e Banner" em outro) |
+| **Desdobramento** | Regras para uma resposta gerar vários cards, com a categoria e o prazo de cada um. No briefing de cada card, as perguntas de entregáveis mostram só as opções daquela área. Colunas opcionais: **Item no card** troca o texto da opção (ex.: "Material gráfico (Certificados, Panfleto, Banner)" vira "Certificados" num card e "Panfleto e Banner" em outro); **Responsável** manda aquele item para uma pessoa em vez do responsável da categoria (vira um card separado); **A partir de** faz o Responsável valer só desde essa data, para trocas de função programadas |
 | **Automacoes** | Quando (tarefa criada, status mudou, responsável mudou, prazo vencido) → Se (campo = valor) → Então (mover, atribuir, prioridade, etiqueta, checklist, e-mail, webhook) |
 | **Recorrentes** | Demandas que se criam sozinhas. O quadro preenche esta aba quando alguém escolhe **Repetir** em Nova demanda; também dá para cadastrar à mão |
 | Tarefas / Comentarios / Historico | Banco de dados. Não precisa editar à mão |
@@ -116,10 +116,11 @@ Em **＋ Nova demanda**, escolha em **Repetir**:
 | Todos os dias | Diariamente | — |
 | Toda semana | A cada 7 dias | Dia da semana da data de início |
 | A cada 2 semanas | A cada 14 dias | Dia da semana da data de início |
-| Todo mês | Uma vez por mês | Dia do mês da data de início (dia 31 vira o último dia em meses mais curtos) |
+| Todo mês | Uma vez por mês | Dia do mês da data de início (dia 31 vira o último dia em meses mais curtos). Na aba, o **Dia** também aceita "1º dom", "2ª seg", "último sex" |
 | Personalizado… | A cada N dias (1 a 365) | Data de início |
 
 - A primeira demanda entra no quadro na hora. As próximas são criadas pela rotina diária das 7h, com o título "Nome — dd/MM".
+- **Prazo (dias) negativo** na aba = antecedência: com `-7`, o card nasce 7 dias antes da data e vence nela (bom para "entregar no 1º domingo do mês").
 - O **prazo** informado vale para a primeira entrega; as seguintes mantêm a mesma distância entre início e prazo. Sem prazo, vale o SLA da categoria.
 - Se a rotina deixar de rodar algum dia, a ocorrência perdida mais recente é criada na próxima execução (até 31 dias para trás), sem duplicar.
 - **Pausar** não apaga nada: as demandas já criadas continuam no quadro. Ao retomar, o período pausado não é recuperado.

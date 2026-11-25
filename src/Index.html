@@ -838,12 +838,16 @@ function recVence(r,d){
       if(!base)return passo===7&&wd>=0&&dSem(d)===wd;
       let an=base;if(wd>=0)while(dSem(an)!==wd)an=addDias(an,1);
       const df=diasEntre(an,d);return df>=0&&df%passo===0}
-    case 'Mensal':{const alvo=Number(r.dia)||(base?Number(base.slice(8,10)):0);if(!alvo)return false;
-      const [a,m,dd]=d.split('-').map(Number);return dd===Math.min(alvo,new Date(a,m,0).getDate())}
+    case 'Mensal':{const [a,m,dd]=d.split('-').map(Number),ult=new Date(a,m,0).getDate(),nth=nthDia(r.dia);
+      if(nth)return dSem(d)===nth.wd&&(nth.n===-1?dd+7>ult:Math.ceil(dd/7)===nth.n);
+      const alvo=Number(r.dia)||(base?Number(base.slice(8,10)):0);if(!alvo)return false;return dd===Math.min(alvo,ult)}
     case 'Personalizada':{const n=Math.floor(Number(r.aCada));if(!base||!(n>=1))return false;return diasEntre(base,d)%n===0}
   }
   return false;
 }
+function nthDia(dia){let s=semAc(dia).replace(/[º°ª]/g,'');
+  s=s.replace(/^primeir\w*/,'1').replace(/^segund\w*(?=\s)/,'2').replace(/^terceir\w*/,'3').replace(/^quart\w*(?=\s)/,'4').replace(/^quint\w*(?=\s)/,'5').replace(/^ultim\w*/,'u');
+  const m=s.match(/^([1-5u])\s*[oa]?\s+(dom|seg|ter|qua|qui|sex|sab)/);return m?{n:m[1]==='u'?-1:Number(m[1]),wd:DSEM.indexOf(m[2])}:null}
 function recProximas(r,desde,qtd){const o=[];let d=desde;for(let i=0;i<800&&o.length<qtd;i++){if(recVence(r,d))o.push(d);d=addDias(d,1)}return o}
 function recTexto(r){
   const base=r.inicio||'',wt=DSEM.indexOf(semAc(r.dia).slice(0,3)),wd=wt>=0?wt:base?dSem(base):-1,nd=wd>=0?DSEM_NOME[wd]:'',todo=wd===0||wd===6?'Todo ':'Toda ';
@@ -851,7 +855,8 @@ function recTexto(r){
     case 'Diária':return 'Todos os dias';
     case 'Semanal':return nd?todo+nd:'Semanal';
     case 'Quinzenal':return 'A cada 2 semanas'+(nd?` (${nd})`:'');
-    case 'Mensal':{const dm=Number(r.dia)||(base?Number(base.slice(8,10)):0);return dm?`Todo dia ${dm} do mês`+(dm>28?' (ou o último dia)':''):'Mensal'}
+    case 'Mensal':{const nth=nthDia(r.dia);if(nth){const ms=nth.wd===0||nth.wd===6;return (ms?'Todo ':'Toda ')+(nth.n===-1?(ms?'último ':'última '):nth.n+(ms?'º ':'ª '))+DSEM_NOME[nth.wd]+' do mês'}
+      const dm=Number(r.dia)||(base?Number(base.slice(8,10)):0);return dm?`Todo dia ${dm} do mês`+(dm>28?' (ou o último dia)':''):'Mensal'}
     case 'Personalizada':{const n=Math.floor(Number(r.aCada));return n===1?'Todos os dias':`A cada ${n} dias`}
   }
   return r.freq||'—';

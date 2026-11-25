@@ -16,6 +16,7 @@
   --radius:10px; --hover:#F9FAFB; --sub:#F2F4F7; --colbg:#EBEDF1; --text2:#344054; --brandTxt:var(--brand); --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;height:100%}
 body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;display:flex;flex-direction:column;overflow:hidden}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -291,6 +292,14 @@ html.dark .rec-st.on{color:#6CE9A6}
 .cm.eu{align-self:flex-end;flex-direction:row-reverse}
 .cm.eu .bal{background:var(--brand);border-color:var(--brand);color:#fff}.cm.eu .bal a{color:#fff}.cm.eu .hr{color:rgba(255,255,255,.7)}
 .cm .men{font-weight:600;color:var(--blue)}.cm.eu .men{color:#fff;text-decoration:underline}
+.chat.lista .chat-msgs{background:var(--panel);padding:6px 8px}
+.conv{display:flex;gap:10px;align-items:center;width:100%;border:0;background:none;text-align:left;padding:9px 8px;border-radius:10px}
+.conv:hover{background:var(--hover)}
+.conv-tx{flex:1;min-width:0;display:flex;flex-direction:column}.conv-tx .sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conv-n{background:var(--red);color:#fff;border-radius:10px;font-size:11px;font-weight:700;min-width:20px;height:20px;padding:0 6px;display:grid;place-items:center}
+.conv-hash{background:var(--brand);font-size:15px}
+.conv-sep{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:12px 8px 4px}
+.chat-f[hidden]{display:none}
 .chat-f{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line);align-items:flex-end}
 .chat-f textarea{flex:1;resize:none;max-height:120px;min-height:38px}
 .tg{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line);cursor:pointer}
@@ -343,9 +352,9 @@ html.fundo-foto .wl,html.fundo-foto .cal-side{backdrop-filter:blur(8px)}
 <div class="ov" id="ov" onclick="fecharDrawer()"></div>
 <aside class="drawer" id="drawer"></aside>
 <aside class="chat" id="chat">
-  <div class="chat-h"><b>💬 Chat da equipe</b><span class="sub" id="chatSub"></span><button class="btn ghost sm" style="margin-left:auto" onclick="fecharChat()">✕</button></div>
+  <div class="chat-h"><button class="btn ghost sm" id="chatVoltar" hidden onclick="voltarLista()" title="Conversas">←</button><b id="chatTitulo" style="display:flex;align-items:center;gap:6px">💬 Conversas</b><span class="sub" id="chatSub"></span><button class="btn ghost sm" style="margin-left:auto" onclick="fecharChat()">✕</button></div>
   <div class="chat-msgs" id="chatMsgs"><div class="vazio">Carregando…</div></div>
-  <div class="chat-f"><textarea class="inp" id="chatTxt" rows="1" placeholder="Mensagem… (@nome avisa a pessoa)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();enviarChat()}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea><button class="btn pri" onclick="enviarChat()">Enviar</button></div>
+  <div class="chat-f" id="chatPe"><textarea class="inp" id="chatTxt" rows="1" placeholder="Mensagem… (@nome avisa a pessoa)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();enviarChat()}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea><button class="btn pri" onclick="enviarChat()">Enviar</button></div>
 </aside>
 <div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
 <div class="toast" id="toast"></div>
@@ -1332,46 +1341,82 @@ async function salvarPref(k,v){
 /* =========================================================
  *  CHAT DA EQUIPE
  * ========================================================= */
-function chaveLido(){return 'qd_chat_lido_'+((S.me&&S.me.nome)||'')}
-function badgeChat(){const b=$('chatBadge');if(!b)return;const tot=(S.chatInfo&&S.chatInfo.total)||0;if(lsGet(chaveLido())===null)lsSet(chaveLido(),String(tot));const lido=Number(lsGet(chaveLido())||0);
-  const n=$('chat').classList.contains('on')?0:Math.max(0,tot-lido);b.hidden=!n;b.textContent=n>99?'99+':n;
-  if(n&&S.chatInfo.ultimo&&S.chatInfo.ultimo.autor!==(S.me&&S.me.nome)&&S.chatAvisado!==tot&&S.chatAvisado!==undefined)toast('💬 '+S.chatInfo.ultimo.autor+': '+S.chatInfo.ultimo.texto);
-  S.chatAvisado=tot}
-async function abrirChat(){
-  $('chat').classList.add('on');$('chatBadge').hidden=true;
+/* Conversas: '' = # Geral; nome = conversa individual com essa pessoa (só os dois veem). */
+function convDe(m){return m.para?(S.me&&m.autor===S.me.nome?m.para:m.autor):''}
+function chaveLido(){return 'qd_chat_lido2_'+((S.me&&S.me.nome)||'')}
+function lidos(){try{return JSON.parse(lsGet(chaveLido())||'null')}catch(e){return null}}
+function marcarLido(conv,n){const l=lidos()||{};if(!(l[conv]>=n)){l[conv]=n;lsSet(chaveLido(),JSON.stringify(l))}}
+function fonteChat(){const a=S.chatMsgs||[],mx=a.reduce((x,m)=>Math.max(x,m.n),0);return a.concat(((S.chatInfo&&S.chatInfo.recentes)||[]).filter(m=>m.n>mx))}
+function naoLidas(){
+  const l=lidos(),me=S.me&&S.me.nome,out={};
+  if(!l){ // primeiro acesso neste navegador: tudo o que já existe conta como lido
+    const z={};fonteChat().forEach(m=>{const c=convDe(m);z[c]=Math.max(z[c]||0,m.n)});lsSet(chaveLido(),JSON.stringify(z));return out}
+  fonteChat().forEach(m=>{if(m.autor===me||m.n<=0)return;const c=convDe(m);if(m.n>(l[c]||0))out[c]=(out[c]||0)+1});
+  return out}
+function badgeChat(){const b=$('chatBadge');if(!b)return;
+  const nl=naoLidas(),aberta=$('chat').classList.contains('on')&&S.chatTela==='conversa'?S.conv:null;
+  const n=Object.keys(nl).filter(c=>c!==aberta).reduce((a,c)=>a+nl[c],0);
+  b.hidden=!n;b.textContent=n>99?'99+':n;
+  const rec=(S.chatInfo&&S.chatInfo.recentes)||[],ult=rec[rec.length-1];
+  if(n&&ult&&ult.autor!==(S.me&&S.me.nome)&&S.chatAvisado!==ult.n&&S.chatAvisado!==undefined&&!$('chat').classList.contains('on'))toast('💬 '+ult.autor+(ult.para?' (só para você)':'')+': '+ult.texto);
+  S.chatAvisado=ult?ult.n:0}
+async function abrirChat(conv){
+  $('chat').classList.add('on');
   if(!S.chatMsgs){S.chatMsgs=[];S.chatN=0}
-  await puxarChat(true);setTimeout(()=>$('chatTxt').focus(),80);
+  if(conv!==undefined){S.conv=conv;S.chatTela='conversa'}else if(!S.chatTela)S.chatTela='lista';
+  renderChatTela();
+  await puxarChat(true);
   clearInterval(S.chatTimer);S.chatTimer=setInterval(()=>{if(!document.hidden)puxarChat()},6000);
 }
 function fecharChat(){$('chat').classList.remove('on');clearInterval(S.chatTimer);badgeChat()}
+function abrirConversa(conv){S.conv=conv;S.chatTela='conversa';S.chatPrimeiro=true;renderChatTela();setTimeout(()=>$('chatTxt')&&$('chatTxt').focus(),60)}
+function voltarLista(){S.chatTela='lista';renderChatTela()}
 async function puxarChat(primeira){
-  let r;try{r=await call('chatListar',{desde:S.chatN||0})}catch(e){if(primeira)$('chatMsgs').innerHTML='<div class="vazio">Não foi possível carregar o chat.</div>';return}
-  if(r.msgs.length||primeira){S.chatMsgs=S.chatMsgs.concat(r.msgs).slice(-300);S.chatN=r.total;renderChat(true)}
-  S.chatN=r.total;S.chatInfo={total:r.total,ultimo:S.chatInfo&&S.chatInfo.ultimo};lsSet(chaveLido(),String(r.total));
+  let r;try{r=await call('chatListar',{desde:S.chatN||0})}catch(e){if(primeira&&!S.chatMsgs.length)$('chatMsgs').innerHTML='<div class="vazio">Não foi possível carregar o chat.</div>';return}
+  const vistos=new Set(S.chatMsgs.map(m=>m.n));const novas=r.msgs.filter(m=>!vistos.has(m.n));
+  S.chatMsgs=S.chatMsgs.concat(novas).slice(-600);S.chatN=r.total;
+  const ult=S.chatMsgs[S.chatMsgs.length-1];if(ult)S.chatInfo={total:r.total,recentes:S.chatMsgs.slice(-80).map(m=>({n:m.n,autor:m.autor,para:m.para,texto:String(m.texto).slice(0,80)}))};
+  if(novas.length||primeira)renderChatTela(true);
 }
-function renderChat(rolar){
+function tituloConv(c){return c?c:'# Geral'}
+function renderChatTela(rolar){
+  const me=S.me&&S.me.nome;
+  $('chat').classList.toggle('lista',S.chatTela!=='conversa');
+  if(S.chatTela!=='conversa'){
+    $('chatTitulo').innerHTML='💬 Conversas';$('chatVoltar').hidden=true;$('chatSub').textContent='';
+    const nl=naoLidas(),ult={};S.chatMsgs.forEach(m=>{ult[convDe(m)]=m});
+    const pessoas=(S.equipe||[]).map(p=>p.nome).filter(n=>n!==me).sort((a,b)=>((ult[b]||{}).n||0)-((ult[a]||{}).n||0)||a.localeCompare(b,'pt'));
+    const item=(c,icone,nome)=>{const u=ult[c];return `<button class="conv" onclick="abrirConversa('${esc(c).replace(/'/g,"\\'")}')">${icone}<span class="conv-tx"><b>${esc(nome)}</b><span class="sub">${u?(u.autor===me?'Você: ':c?'':esc(u.autor.split(' ')[0])+': ')+esc(String(u.texto).slice(0,60)):c?'Conversa individual':'Toda a equipe'}</span></span>${nl[c]?`<span class="conv-n">${nl[c]}</span>`:''}</button>`};
+    $('chatMsgs').innerHTML=item('','<span class="av lg conv-hash">#</span>','Geral')+'<div class="conv-sep">Mensagens individuais</div>'+pessoas.map(n=>item(n,av(n,1),n)).join('');
+    $('chatPe').hidden=true;badgeChat();return;
+  }
+  const c=S.conv||'';
+  $('chatTitulo').innerHTML=c?`${av(c)} ${esc(c)}`:'# Geral';$('chatVoltar').hidden=false;$('chatSub').textContent=c?'só vocês dois':'toda a equipe';
+  $('chatPe').hidden=false;$('chatTxt').placeholder=c?'Mensagem para '+c.split(' ')[0]+'…':'Mensagem… (@nome avisa a pessoa)';
+  const lista=S.chatMsgs.filter(m=>convDe(m)===c);
   const box=$('chatMsgs'),noFim=box.scrollHeight-box.scrollTop-box.clientHeight<80;
-  if(!S.chatMsgs.length){box.innerHTML='<div class="vazio">Nenhuma mensagem ainda. Diga um oi para a equipe! 👋</div>';return}
+  if(!lista.length){box.innerHTML=`<div class="vazio">${c?'Comece a conversa com '+esc(c.split(' ')[0])+'. Só vocês dois veem estas mensagens.':'Nenhuma mensagem ainda. Diga um oi para a equipe! 👋'}</div>`;badgeChat();return}
   const hoje=hojeISO();let dia='',ant='',h='';
   const nomes=(S.equipe||[]).map(p=>p.nome.split(' ')[0]).filter(Boolean);
-  const reMen=nomes.length?new RegExp('@('+nomes.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')','gi'):null;
-  S.chatMsgs.forEach(m=>{
+  const reMen=!c&&nomes.length?new RegExp('@('+nomes.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')','gi'):null;
+  lista.forEach(m=>{
     const d=String(m.data).slice(0,10);
     if(d!==dia){dia=d;ant='';h+=`<div class="chat-dia">${d===hoje?'Hoje':d===addDias(hoje,-1)?'Ontem':fmtBR(d)}</div>`}
-    const eu=S.me&&m.autor===S.me.nome,cont=m.autor===ant;ant=m.autor;
+    const eu=m.autor===me,cont=m.autor===ant;ant=m.autor;
     let txt=esc(m.texto).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>');
     if(reMen)txt=txt.replace(reMen,'<span class="men">$&</span>');
-    h+=`<div class="cm${eu?' eu':''}${cont?' cont':''}">${eu?'':`<span class="av-sp">${av(m.autor)}</span>`}<div class="bal">${!eu&&!cont?`<div class="who">${esc(m.autor)}</div>`:''}${txt}<span class="hr">${String(m.data).slice(11,16)}</span></div></div>`;
+    h+=`<div class="cm${eu?' eu':''}${cont?' cont':''}">${eu?'':`<span class="av-sp">${av(m.autor)}</span>`}<div class="bal">${!eu&&!cont&&!c?`<div class="who">${esc(m.autor)}</div>`:''}${txt}<span class="hr">${String(m.data).slice(11,16)}</span></div></div>`;
   });
-  box.innerHTML=h;if(rolar===true&&(noFim||S.chatPrimeiro!==false)){box.scrollTop=box.scrollHeight;S.chatPrimeiro=false}
+  box.innerHTML=h;if(noFim||S.chatPrimeiro!==false){box.scrollTop=box.scrollHeight;S.chatPrimeiro=false}
+  const maxN=lista.reduce((a,m)=>Math.max(a,m.n),0);if(maxN>0)marcarLido(c,maxN);badgeChat();
 }
 async function enviarChat(){
-  const el=$('chatTxt'),t=el.value.trim();if(!t)return;
+  const el=$('chatTxt'),t=el.value.trim();if(!t)return;const c=S.conv||'';
   el.value='';el.style.height='auto';
-  const tmp={n:-1,data:agoraLocal(),autor:S.me.nome,texto:t};S.chatMsgs.push(tmp);renderChat(true);$('chatMsgs').scrollTop=1e9;
-  try{const r=await call('chatEnviar',{texto:t,desde:S.chatN||0});S.chatMsgs=S.chatMsgs.filter(m=>m!==tmp);
-    const vistos=new Set(S.chatMsgs.map(m=>m.n));S.chatMsgs=S.chatMsgs.concat(r.msgs.filter(m=>!vistos.has(m.n)));S.chatN=r.total;lsSet(chaveLido(),String(r.total));renderChat(true);$('chatMsgs').scrollTop=1e9}
-  catch(e){S.chatMsgs=S.chatMsgs.filter(m=>m!==tmp);renderChat();el.value=t;toast('Mensagem não enviada: '+msgErro(e))}
+  const tmp={n:-1,data:agoraLocal(),autor:S.me.nome,texto:t,para:c};S.chatMsgs.push(tmp);S.chatPrimeiro=true;renderChatTela(true);
+  try{const r=await call('chatEnviar',{texto:t,desde:S.chatN||0,para:c});S.chatMsgs=S.chatMsgs.filter(m=>m!==tmp);
+    const vistos=new Set(S.chatMsgs.map(m=>m.n));S.chatMsgs=S.chatMsgs.concat(r.msgs.filter(m=>!vistos.has(m.n)));S.chatN=r.total;S.chatPrimeiro=true;renderChatTela(true)}
+  catch(e){S.chatMsgs=S.chatMsgs.filter(m=>m!==tmp);renderChatTela();el.value=t;toast('Mensagem não enviada: '+msgErro(e))}
 }
 function agoraLocal(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`}
 function escolherEu(){login()}
@@ -1491,14 +1536,15 @@ function mockApi(acao,p){
   const me=DB.equipe.find(m=>m.nome===p.autor&&m.pin===p.pin);
   if(!me)throw new Error('LOGIN');
   const recCli=r=>{const desde=r.ultima&&r.ultima>=hojeISO()?addDias(r.ultima,1):hojeISO();return {...r,texto:recTexto(r),proxima:r.ativa?(recProximas(r,r.inicio>desde?r.inicio:desde,1)[0]||''):''}};
-  DB.chat=DB.chat||[{data:addDias(hojeISO(),-1)+' 17:42',autor:'Bruna',texto:'Pessoal, subi as artes do webinar na pasta de entregas 👍'},{data:hojeISO()+' 08:15',autor:'Ana',texto:'Bom dia! @Carla consegue cobrir o workshop na quinta?'},{data:hojeISO()+' 08:31',autor:'Carla',texto:'Consigo sim, já reservei a câmera.'}];
+  DB.chat=DB.chat||[{data:addDias(hojeISO(),-1)+' 17:42',autor:'Bruna',texto:'Pessoal, subi as artes do webinar na pasta de entregas 👍'},{data:hojeISO()+' 08:15',autor:'Ana',texto:'Bom dia! @Carla consegue cobrir o workshop na quinta?'},{data:hojeISO()+' 08:31',autor:'Carla',texto:'Consigo sim, já reservei a câmera.'},{data:hojeISO()+' 09:02',autor:'Bruna',para:'Ana',texto:'Ana, posso sair mais cedo na sexta? Deixo as artes prontas na quinta.'},{data:hojeISO()+' 09:10',autor:'Diego',para:'Carla',texto:'Carla, me passa o cartão de memória depois?'}];
   DB.docs=DB.docs||[{id:'d1',titulo:'Organograma da equipe',link:'https:\/\/docs.google.com/presentation/d/exemplo',pasta:'Organização',descricao:'Quem faz o quê e quem substitui quem.',autor:'Ana',data:hojeISO()},
     {id:'d2',titulo:'Modelo de roteiro de vídeo',link:'https:\/\/docs.google.com/document/d/exemplo',pasta:'Modelos',descricao:'Use para VTs e vídeos de redes: abertura, mensagem, chamada.',autor:'Diego',data:hojeISO()},
     {id:'d3',titulo:'Manual da marca',link:'https:\/\/exemplo.com/manual.pdf',pasta:'Marca e identidade',descricao:'Cores, fontes e uso do logo.',autor:'Ana',data:hojeISO()},
     {id:'d4',titulo:'Templates de posts',link:'https:\/\/www.canva.com/design/exemplo',pasta:'Modelos',descricao:'',autor:'Bruna',data:hojeISO()}];
-  const chatL=d=>{const ini=Math.max(Number(d)||0,DB.chat.length-200);return {total:DB.chat.length,msgs:DB.chat.slice(ini).map((m,i)=>({...m,n:ini+i+1,id:'m'+(ini+i)}))}};
+  const visivel=m=>!m.para||m.para===me.nome||m.autor===me.nome;
+  const chatL=d=>{const ini=Math.max(Number(d)||0,DB.chat.length-200);return {total:DB.chat.length,msgs:DB.chat.slice(ini).map((m,i)=>({...m,n:ini+i+1,id:'m'+(ini+i)})).filter(visivel)}};
   if(acao==='chatListar')return JSON.parse(JSON.stringify(chatL(p.desde)));
-  if(acao==='chatEnviar'){const t=String(p.texto||'').trim();if(!t)throw new Error('Mensagem vazia');DB.chat.push({data:agora(),autor:me.nome,texto:t});return JSON.parse(JSON.stringify(chatL(p.desde)))}
+  if(acao==='chatEnviar'){const t=String(p.texto||'').trim();if(!t)throw new Error('Mensagem vazia');DB.chat.push({data:agora(),autor:me.nome,texto:t,para:p.para||''});return JSON.parse(JSON.stringify(chatL(p.desde)))}
   if(acao==='equipeListar'){if(me.perfil!=='Gestor')throw new Error('SEM_PERMISSAO');return {lista:DB.equipe.map(m=>({...m,email:m.email||'',ativo:true,abertas:DB.tarefas.filter(t=>t.responsavel===m.nome).length}))}}
   if(acao==='avatar'){const alvo=p.pessoa||me.nome;if(alvo!==me.nome&&me.perfil!=='Gestor')throw new Error('SEM_PERMISSAO: só gestores trocam a foto de outra pessoa');const m=DB.equipe.find(x=>x.nome===alvo);m.foto=p.foto||'';return {nome:m.nome,foto:m.foto}}
   if(acao==='preferencias'){if('avisos' in p)me.avisos=!!p.avisos;if('resumo' in p)me.resumo=!!p.resumo;return {avisos:me.avisos!==false,resumo:me.resumo!==false}}
@@ -1513,7 +1559,7 @@ function mockApi(acao,p){
     case 'configFundo':{if(me.perfil!=='Gestor')throw new Error('SEM_PERMISSAO: só gestores definem a cor de fundo da equipe');DB.fundo=p.cor||'';return {fundo:DB.fundo}}
     case 'board':return JSON.parse(JSON.stringify({config:{nome:'Sýstima (demo)',cor:'#1F3A5F',fundo:DB.fundo||'',colunas:['Novo','Em produção','Revisão','Entregue'],colunaFinal:'Entregue',prioridades:['Baixa','Normal','Alta','Urgente'],agenda:true},
       me:{nome:me.nome,perfil:me.perfil,avisos:me.avisos!==false,resumo:me.resumo!==false,email:true},categorias:DB.cats,equipe:DB.equipe.map(({pin,...m})=>m),tarefas:DB.tarefas.filter(t=>p.arquivadas||t.arquivada!=='SIM').map(t=>({...t,comentarios:(DB.com[t.id]||[]).length})),recorrencias:DB.recs.map(recCli),
-      chat:{total:DB.chat.length,ultimo:DB.chat.length?{...DB.chat[DB.chat.length-1]}:null},documentos:DB.docs}));
+      chat:{total:DB.chat.length,recentes:chatL(0).msgs.slice(-80).map(m=>({n:m.n,autor:m.autor,para:m.para||'',texto:String(m.texto).slice(0,80)}))},documentos:DB.docs}));
     case 'docSalvar':{if(!p.titulo||!/^https:\/\//.test(p.link))throw new Error('Nome e link https:\/\/ são obrigatórios');
       if(p.id){const d=DB.docs.find(x=>x.id===p.id);if(me.perfil!=='Gestor'&&d.autor!==me.nome)throw new Error('SEM_PERMISSAO: só um gestor ou quem adicionou pode editar');Object.assign(d,{titulo:p.titulo,link:p.link,pasta:p.pasta||'Geral',descricao:p.descricao})}
       else DB.docs.push({id:'d'+Date.now(),titulo:p.titulo,link:p.link,pasta:p.pasta||'Geral',descricao:p.descricao,autor:me.nome,data:agora()});return JSON.parse(JSON.stringify(DB.docs))}

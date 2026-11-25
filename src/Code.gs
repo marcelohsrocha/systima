@@ -294,15 +294,15 @@ function api(acao, p, codigo) {
   const me = autenticar_(p.autor, p.pin);
   const exigir = c.EXIGIR_LOGIN === 'SIM';
   if (exigir && !me) throw new Error('LOGIN');
-  if (acao === 'board') { const b = board_(p); b.me = me ? { nome: me.nome, perfil: me.perfil, interinoAte: me.interinoAte || '', avisos: me.avisos, resumo: me.resumo, email: !!me.email } : null; return b; }
+  if (acao === 'board') { const b = board_(p); b.chat = chatInfo_(me); b.me = me ? { nome: me.nome, perfil: me.perfil, interinoAte: me.interinoAte || '', avisos: me.avisos, resumo: me.resumo, email: !!me.email } : null; return b; }
   if (acao === 'detalhes') return detalhes_(p.id);
   if (acao === 'agenda') return agendaEventos_(p.ini, p.fim);
-  if (acao === 'chatListar') return chatListar_(p.desde);
+  if (acao === 'chatListar') return chatListar_(p.desde, me);
   // valem para qualquer pessoa logada, inclusive Leitor
   if ((acao === 'preferencias' || acao === 'chatEnviar' || acao === 'avatar') && !me) throw new Error('LOGIN');
   if (acao === 'preferencias') return salvarPreferencias_(me, p);
   if (acao === 'avatar') return salvarAvatar_(me, p);
-  if (acao === 'chatEnviar') { const lk = LockService.getScriptLock(); lk.waitLock(15000); try { return chatEnviar_(me, p.texto, p.desde); } finally { lk.releaseLock(); } }
+  if (acao === 'chatEnviar') { const lk = LockService.getScriptLock(); lk.waitLock(15000); try { return chatEnviar_(me, p.texto, p.desde, p.para); } finally { lk.releaseLock(); } }
 
   // daqui pra baixo: escrita
   const eu = me || (exigir ? null : { nome: p.autor || 'Alguém', perfil: 'Gestor' });
@@ -658,7 +658,6 @@ function board_(p) {
     equipe: equipe_().map(m => ({ nome: m.nome, funcao: m.funcao, capacidade: m.capacidade, perfil: m.perfil, foto: m.foto })),
     tarefas: tarefas,
     recorrencias: lerRecorrentes_().map(recClient_),
-    chat: chatInfo_(),
     documentos: lerDocumentos_(),
     agora: agora_()
   };
@@ -2021,33 +2020,60 @@ function docExcluir_(eu, id) {
  * ============================================================ */
 function abaChat_() {
   const ss = ss_();
-  return ss.getSheetByName(ABA.CHAT) || criarAba_(ss, ABA.CHAT, ['ID', 'Data', 'Autor', 'Texto'], []);
+  const sh = ss.getSheetByName(ABA.CHAT) || criarAba_(ss, ABA.CHAT, ['ID', 'Data', 'Autor', 'Texto', 'Para'], []);
+  if (!sh.getRange(1, 5).getDisplayValue()) sh.getRange(1, 5).setValue('Para').setFontWeight('bold').setBackground('#1F3A5F').setFontColor('#FFFFFF');
+  return sh;
 }
-function chatInfo_() {
-  const sh = ss_().getSheetByName(ABA.CHAT);
-  if (!sh || sh.getLastRow() < 2) return { total: 0, ultimo: null };
-  const r = sh.getRange(sh.getLastRow(), 1, 1, 4).getDisplayValues()[0];
-  return { total: sh.getLastRow() - 1, ultimo: { autor: r[2], texto: String(r[3]).slice(0, 80), data: r[1] } };
+/** Mensagem visível para a pessoa: conversa geral (Para vazio) ou individual em que ela é remetente ou destinatária. */
+function chatVisivel_(r, eu) {
+  const para = String(r[4] || '').trim();
+  if (!para) return true;
+  if (!eu) return false;
+  return norm_(para) === norm_(eu.nome) || norm_(r[2]) === norm_(eu.nome);
 }
-function chatListar_(desde) {
+function chatLinhas_(desde, max) {
   const sh = ss_().getSheetByName(ABA.CHAT);
-  if (!sh || sh.getLastRow() < 2) return { total: 0, msgs: [] };
+  if (!sh || sh.getLastRow() < 2) return { total: 0, linhas: [] };
   const total = sh.getLastRow() - 1;
-  let ini = Math.max(Number(desde) || 0, total - 200); // no máximo as últimas 200
-  if (ini >= total) return { total: total, msgs: [] };
-  const v = sh.getRange(ini + 2, 1, total - ini, 4).getDisplayValues();
-  return { total: total, msgs: v.map((r, i) => ({ n: ini + i + 1, id: r[0], data: r[1], autor: r[2], texto: r[3] })) };
+  const ini = Math.max(Number(desde) || 0, total - max);
+  if (ini >= total) return { total: total, linhas: [] };
+  const larg = Math.min(5, sh.getLastColumn());
+  return { total: total, linhas: sh.getRange(ini + 2, 1, total - ini, larg).getDisplayValues().map((r, i) => { while (r.length < 5) r.push(''); r.n = ini + i + 1; return r; }) };
 }
-function chatEnviar_(eu, texto, desde) {
+/** Resumo para o selo de não lidas: últimas mensagens visíveis (sem o texto completo). */
+function chatInfo_(eu) {
+  const c = chatLinhas_(0, 400);
+  const vis = c.linhas.filter(r => chatVisivel_(r, eu)).slice(-80);
+  return { total: c.total, recentes: vis.map(r => ({ n: r.n, autor: r[2], para: r[4], texto: String(r[3]).slice(0, 80) })) };
+}
+function chatListar_(desde, eu) {
+  const c = chatLinhas_(desde, 600);
+  return { total: c.total, msgs: c.linhas.filter(r => chatVisivel_(r, eu)).map(r => ({ n: r.n, id: r[0], data: r[1], autor: r[2], texto: r[3], para: r[4] })) };
+}
+function chatEnviar_(eu, texto, desde, para) {
   texto = String(texto || '').trim().slice(0, 2000);
   if (!texto) throw new Error('Mensagem vazia');
+  let dest = '';
+  if (para) {
+    const m = membro_(para);
+    if (!m) throw new Error('Pessoa não encontrada na equipe');
+    if (norm_(m.nome) === norm_(eu.nome)) throw new Error('Escolha outra pessoa para conversar');
+    dest = m.nome;
+  }
   const sh = abaChat_();
-  sh.getRange(sh.getLastRow() + 1, 1, 1, 4).setNumberFormat('@').setValues([[uid_(), agora_(), eu.nome, texto]]);
-  // @menções: avisa por e-mail quem foi citado (se não desligou os avisos)
-  equipe_().filter(m => m.email && m.avisos && norm_(m.nome) !== norm_(eu.nome) && new RegExp('@' + escRe_(m.nome.split(' ')[0]), 'i').test(texto))
-    .forEach(m => enviarEmail_(m.email, `💬 ${eu.nome} mencionou você no chat`,
-      `<p><b>${esc_(eu.nome)}</b> escreveu no chat da equipe:</p><blockquote>${esc_(texto)}</blockquote>${ScriptApp.getService().getUrl() ? `<p><a href="${ScriptApp.getService().getUrl()}">Abrir o quadro</a></p>` : ''}`));
-  return chatListar_(desde === undefined ? sh.getLastRow() - 2 : desde); // devolve também o que chegou de outras pessoas
+  sh.getRange(sh.getLastRow() + 1, 1, 1, 5).setNumberFormat('@').setValues([[uid_(), agora_(), eu.nome, texto, dest]]);
+  const url = ScriptApp.getService().getUrl();
+  const link = url ? `<p><a href="${url}">Abrir o quadro</a></p>` : '';
+  if (dest) {
+    // conversa individual: avisa o destinatário (se não desligou os avisos)
+    const m = membro_(dest);
+    if (m && m.email && m.avisos) enviarEmail_(m.email, `💬 Mensagem de ${eu.nome}`, `<p><b>${esc_(eu.nome)}</b> mandou uma mensagem só para você:</p><blockquote>${esc_(texto)}</blockquote>${link}`);
+  } else {
+    // conversa geral: @menções avisam quem foi citado
+    equipe_().filter(m => m.email && m.avisos && norm_(m.nome) !== norm_(eu.nome) && new RegExp('@' + escRe_(m.nome.split(' ')[0]), 'i').test(texto))
+      .forEach(m => enviarEmail_(m.email, `💬 ${eu.nome} mencionou você no chat`, `<p><b>${esc_(eu.nome)}</b> escreveu no chat da equipe:</p><blockquote>${esc_(texto)}</blockquote>${link}`));
+  }
+  return chatListar_(desde === undefined ? sh.getLastRow() - 2 : desde, eu);
 }
 
 function membro_(nome) {

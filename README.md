@@ -28,7 +28,7 @@ As demandas chegam pelo **Google Forms**, viram cards num **Kanban**, são distr
 | **Fundo do quadro** | Botão 🎨: cores prontas, qualquer cor ou foto (enviada do computador, fica só no navegador; ou link de imagem, inclusive do Drive). Cada pessoa escolhe a sua (fica no navegador); o gestor pode definir uma para a equipe toda (chave `COR_FUNDO` na aba Config, cor ou link de imagem). As colunas se ajustam à cor para continuar legíveis |
 | **Demanda colaborativa** | Um pedido do formulário com várias áreas vira **um card só**, acompanhado pela coordenação (`COORDENADOR_DEMANDAS`), com as **entregas** de cada pessoa dentro: o que entregar, responsável e prazo. Cada um marca a sua; quando todas estão feitas, o card vai para Revisão. Etapas em sequência por área (aba Categorias, coluna "Etapas", ex.: `Captação=Emily; Edição`): a etapa seguinte só libera quando a anterior é concluída, e o dono recebe o aviso "Sua vez". Também dá para dividir qualquer card à mão em "＋ Adicionar entrega". `DEMANDA_COLABORATIVA = NAO` volta a criar 1 card por área |
 | **Foto de perfil** | Clicando no próprio nome: 📷 Colocar foto (recortada e reduzida no navegador, guardada na aba Equipe, coluna K). Gestores trocam a de qualquer pessoa clicando no avatar em 👥 Equipe |
-| **Chat da equipe** | Botão 💬 no topo: conversa geral da equipe, com aviso de mensagens novas e @nome para avisar alguém por e-mail. Mensagens ficam na aba `Chat` |
+| **Chat da equipe** | Botão 💬 no topo: canal # Geral e conversas individuais com cada pessoa (só os dois veem), com contador de não lidas por conversa, com aviso de mensagens novas e @nome para avisar alguém por e-mail. Mensagens ficam na aba `Chat` |
 | **Documentos** | Aba 📁 com links para modelos, organograma e arquivos da área, organizados por pasta e com busca. Gestores e membros adicionam; editar/remover: gestor ou quem adicionou. Fica na aba `Documentos` |
 | **Resumo semanal** | Toda segunda, na rotina das 7h, cada pessoa recebe por e-mail suas demandas divididas em: em atraso, muito perto do prazo (até 2 dias), precisa de atenção (sem prazo, sem responsável, urgente ou parada há 7+ dias) e dentro do prazo, mais o panorama do setor. Gestores veem também as listas da equipe. Desligue para todos com `RESUMO_SEMANAL = NAO`; para testar, rode `enviarResumoSemanalAgora` |
 | **Preferências de e-mail** | Clicando no próprio nome, cada pessoa liga ou desliga os avisos a cada demanda e o resumo semanal (colunas "Avisos por e-mail" e "Resumo semanal" da aba Equipe) |
@@ -194,3 +194,8 @@ Indicado para equipes de comunicação, agências, igrejas, escolas e qualquer s
 ---
 
 Feito por **Studio Ponte Marketing e Design**.
+
+
+## Antes de publicar
+
+O Apps Script remove comentários ao servir a página e trata `/*` e `//` como comentário até dentro de textos (ex.: `accept="image/*"`, `'https://…'`), o que quebra o quadro (fica "carregando"). Rode `python3 tools/checar_minificador.py src/Index.html` antes de cada implantação e escreva links como `https:\/\/`.

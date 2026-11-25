@@ -888,7 +888,7 @@ function abrirFundo(){
     </div>
     <h5 style="margin:16px 0 8px">🖼️ Foto de fundo</h5>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <label class="btn" style="margin:0;cursor:pointer">📤 Enviar foto<input type="file" accept="image/*" hidden onchange="lerFotoFundo(this)"></label>
+      <label class="btn" style="margin:0;cursor:pointer">📤 Enviar foto<input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.heic" hidden onchange="lerFotoFundo(this)"></label>
       <input class="inp" id="fundoLink" style="flex:1;min-width:180px" placeholder="ou cole um link de imagem (Drive, site…)" value="${ehFoto(atual)&&!/^data:/.test(atual)?esc(atual):''}" onkeydown="if(event.key==='Enter')usarLinkFundo()">
       <button class="btn" onclick="usarLinkFundo()">Usar link</button>
     </div>
@@ -1197,7 +1197,7 @@ async function abrirEquipe(){
 function renderEquipe(info){
   const L=S.eqLista||[];const ativos=L.filter(p=>p.ativo),inativos=L.filter(p=>!p.ativo);
   const linha=p=>{const i=L.indexOf(p);return `<tr style="cursor:default;${p.ativo?'':'opacity:.55'}">
-    <td style="white-space:nowrap"><label title="Trocar a foto de ${esc(p.nome)}" style="cursor:pointer;margin:0;display:inline">${av(p.nome)}<input type="file" accept="image/*" hidden onchange="enviarAvatar(this,'${esc(p.nome).replace(/'/g,'&#39;')}')"></label> <b>${esc(p.nome)}</b><div class="sub" style="margin-left:30px;white-space:normal">${esc(p.funcao||'')}</div></td>
+    <td style="white-space:nowrap"><label title="Trocar a foto de ${esc(p.nome)}" style="cursor:pointer;margin:0;display:inline">${av(p.nome)}<input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.heic" hidden onchange="enviarAvatar(this,'${esc(p.nome).replace(/'/g,'&#39;')}')"></label> <b>${esc(p.nome)}</b><div class="sub" style="margin-left:30px;white-space:normal">${esc(p.funcao||'')}</div></td>
     <td><span class="label">${esc(p.perfil)}</span>${p.interinoAte?`<div class="sub" style="color:var(--amber);font-weight:600;margin-top:3px">🛡️ Gestor interino até ${fmtBR(p.interinoAte)}</div>`:''}</td>
     <td class="sub">${esc(p.email||'— sem e-mail —')}</td>
     <td style="white-space:nowrap"><code>••••</code> <button class="btn ghost sm" onclick="this.previousElementSibling.textContent='${esc(p.pin||'—')}'">ver</button></td>
@@ -1297,7 +1297,7 @@ function menuEu(){
   modal(`<div style="display:flex;gap:14px;align-items:center;margin-bottom:10px">
     <span class="av av-xl ${minhaFoto?'foto':''}" style="${minhaFoto?`background-image:url('${minhaFoto}')`:`background:${corPessoa(S.me.nome)}`}">${minhaFoto?'':esc(iniciais(S.me.nome))}</span>
     <div><h3 style="margin:0 0 6px">${esc(S.me.nome)}</h3><div style="display:flex;gap:6px;flex-wrap:wrap">
-      <label class="btn sm" style="margin:0;cursor:pointer">📷 ${minhaFoto?'Trocar foto':'Colocar foto'}<input type="file" accept="image/*" hidden onchange="enviarAvatar(this)"></label>
+      <label class="btn sm" style="margin:0;cursor:pointer">📷 ${minhaFoto?'Trocar foto':'Colocar foto'}<input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.heic" hidden onchange="enviarAvatar(this)"></label>
       ${minhaFoto?'<button class="btn sm" onclick="salvarAvatar(\'\')">Remover</button>':''}</div></div></div>
   <p class="sub">Perfil: <b>${esc(S.me.perfil)}</b>${S.me.interinoAte?' (interino até '+fmtBR(S.me.interinoAte)+')':''}. ${S.me.perfil==='Gestor'?'Acesso total.':S.me.perfil==='Membro'?'Você cria demandas para qualquer pessoa, move e edita as suas (e as sem responsável), pode repassá-las e comenta em todas.':'Você só visualiza.'}</p>
   <h5 style="margin:16px 0 4px">📧 E-mails que você recebe</h5>

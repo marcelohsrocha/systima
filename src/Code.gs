@@ -78,9 +78,10 @@ const CAMPOS = [
   ['concluidaEm', 'Concluída em'],
   ['atualizadoEm', 'Atualizado em'],
   ['ordem', 'Ordem'],
-  ['origem', 'Origem']
+  ['origem', 'Origem'],
+  ['entregas', 'Entregas (JSON)']
 ];
-const CAMPOS_JSON = ['briefing', 'anexos', 'checklist'];
+const CAMPOS_JSON = ['briefing', 'anexos', 'checklist', 'entregas'];
 
 const CONFIG_PADRAO = [
   ['NOME_QUADRO', 'Sýstima', 'Nome exibido no topo do quadro e nos e-mails'],
@@ -92,6 +93,8 @@ const CONFIG_PADRAO = [
   ['COR_FUNDO', '', 'Fundo do quadro para toda a equipe: cor (#RRGGBB) ou link https de uma imagem. Vazio = padrão. Cada pessoa pode trocar o seu no botão 🎨'],
   ['EMAIL_COORDENACAO', '', 'E-mail do gestor do setor (recebe resumo de novas demandas e atrasos)'],
   ['NOTIFICAR_RESPONSAVEL', 'SIM', 'E-mail ao responsável quando recebe uma demanda'],
+  ['DEMANDA_COLABORATIVA', 'SIM', 'SIM = um pedido do formulário com várias áreas vira 1 card com as entregas de cada pessoa dentro. NAO = 1 card por área'],
+  ['COORDENADOR_DEMANDAS', '', 'Quem acompanha os cards colaborativos (nome da aba Equipe). Vazio = primeiro gestor da equipe'],
   ['RESUMO_SEMANAL', 'SIM', 'Toda segunda, na rotina das 7h, cada pessoa da equipe recebe por e-mail o resumo da semana (cada um pode desligar o seu)'],
   ['NOTIFICAR_SOLICITANTE', 'SIM', 'E-mail ao solicitante quando o status muda (se o formulário coletar e-mail)'],
   ['WEBHOOK_NOTIFICACAO', '', 'URL de webhook (Make/Z-API) para enviar WhatsApp. Deixe vazio para desativar'],
@@ -182,7 +185,8 @@ function configurarPlanilha() {
   const ss = ss_();
   _ss = ss;
   criarAba_(ss, ABA.CONFIG, ['Chave', 'Valor', 'Descrição'], CONFIG_PADRAO);
-  criarAba_(ss, ABA.CATEGORIAS, ['Categoria', 'Responsável padrão', 'Cor', 'SLA (dias)', 'Checklist padrão (itens separados por ;)'], CATEGORIAS_PADRAO);
+  const shCat = criarAba_(ss, ABA.CATEGORIAS, ['Categoria', 'Responsável padrão', 'Cor', 'SLA (dias)', 'Checklist padrão (itens separados por ;)'], CATEGORIAS_PADRAO);
+  if (!shCat.getRange(1, 6).getDisplayValue()) shCat.getRange(1, 6).setValue('Etapas (opcional: Etapa=Pessoa; Etapa)').setFontWeight('bold').setBackground('#1F3A5F').setFontColor('#FFFFFF');
   criarAba_(ss, ABA.EQUIPE, ['Nome', 'E-mail', 'Função', 'Capacidade semanal (h)', 'Perfil (Gestor/Membro/Leitor)', 'PIN'], EQUIPE_PADRAO);
   gerarPins_();
   criarAba_(ss, ABA.MAPEAMENTO, ['Campo do sistema', 'Pergunta do formulário (texto exato)', 'Dica'], MAPEAMENTO_PADRAO);
@@ -345,6 +349,7 @@ function api(acao, p, codigo) {
         return toClient_(criarTarefa_(d, p.autor, 'manual'));
       }
       case 'recorrenciaAlternar': return alternarRecorrencia_(p.id, !!p.ativa, eu);
+      case 'entrega': return entregaAcao_(eu, p);
       case 'comentar': return comentar_(p.id, p.autor, p.texto);
       case 'timer': return toClient_(timer_(p.id, p.modo, p.autor));
       case 'tempoManual': return toClient_(tempoManual_(p.id, p.minutos, p.autor));
@@ -705,11 +710,22 @@ function jaImportado_(origem, tarefas) {
   return tarefas.some(t => t.origem === origem || String(t.origem).indexOf(origem + '|') === 0);
 }
 
-/** Cria 1 card por categoria envolvida (aba Desdobramento) ou 1 card simples. Retorna quantos criou. */
+/** Pedido do formulário → 1 card colaborativo com as entregas de cada pessoa (DEMANDA_COLABORATIVA = SIM)
+ *  ou 1 card por área (NAO). Sem regras de desdobramento: 1 card simples. Retorna quantos cards criou. */
 function criarDoFormulario_(namedValues, autor, origem) {
   const base = dadosDoFormulario_(namedValues);
   const partes = desdobrar_(namedValues);
   if (!partes.length) { criarTarefa_(base, autor, origem); return 1; }
+  const cats = categorias_();
+  const comEtapas = partes.some(pt => { const c = combinarCategoria_(pt.categoria, cats); return c && c.etapas.length; });
+  if (cfg_().DEMANDA_COLABORATIVA !== 'NAO' && (partes.length > 1 || comEtapas)) {
+    criarColaborativa_(base, partes, autor, origem);
+    return 1;
+  }
+  return criarPorArea_(base, partes, autor, origem);
+}
+
+function criarPorArea_(base, partes, autor, origem) {
   const hoje = hoje_();
   const porCategoria = {};
   partes.forEach(pt => porCategoria[pt.categoria] = (porCategoria[pt.categoria] || 0) + 1);
@@ -729,6 +745,161 @@ function criarDoFormulario_(namedValues, autor, origem) {
     criarTarefa_(d, autor, origem ? origem + '|' + pt.categoria + (pt.responsavel ? '|' + pt.responsavel : '') : '');
   });
   return partes.length;
+}
+
+/** Quem acompanha os cards colaborativos: COORDENADOR_DEMANDAS ou o primeiro gestor. */
+function coordenador_() {
+  const eq = equipe_();
+  const c = cfg_().COORDENADOR_DEMANDAS;
+  const m = c ? eq.find(x => norm_(x.nome) === norm_(c)) : null;
+  return m ? m.nome : ((eq.find(x => x.perfil === 'Gestor') || {}).nome || '');
+}
+
+/** Monta as entregas de cada área (com etapas em sequência, se a categoria tiver) e cria um card só. */
+function criarColaborativa_(base, partes, autor, origem) {
+  const hoje = hoje_();
+  const cats = categorias_();
+  const entregas = [];
+  let urgente = false;
+  partes.forEach(pt => {
+    const cat = combinarCategoria_(pt.categoria, cats);
+    const respArea = pt.responsavel || (cat ? cat.responsavel : '');
+    let prazo = pt.prazo || (cat && cat.sla ? isoMais_(hoje, cat.sla) : '');
+    if (prazo && prazo < hoje) { prazo = hoje; urgente = true; }
+    const itens = pt.itens.join(', ');
+    const etapas = cat && cat.etapas.length ? cat.etapas : [{ nome: '', responsavel: '' }];
+    let anterior = '';
+    etapas.forEach((e, i) => {
+      // etapas anteriores vencem 2 dias antes da seguinte (nunca antes de hoje)
+      let pz = prazo ? isoMais_(prazo, -2 * (etapas.length - 1 - i)) : '';
+      if (pz && pz < hoje) pz = hoje;
+      const id = uid_();
+      entregas.push({ id: id, area: cat ? cat.nome : pt.categoria, texto: e.nome ? `${e.nome} — ${itens}` : itens,
+        responsavel: e.responsavel || respArea, prazo: pz, feito: false, feitoEm: '', feitoPor: '', apos: anterior });
+      anterior = id;
+    });
+  });
+  const areas = [...new Set(entregas.map(e => e.area))];
+  const prazos = entregas.map(e => e.prazo).filter(Boolean).sort();
+  const fim = prazos.length ? prazos[prazos.length - 1] : '';
+  const d = Object.assign({}, base, {
+    titulo: base.titulo || 'Nova demanda',
+    categoria: areas.length === 1 ? areas[0] : 'Várias áreas',
+    responsavel: coordenador_(),
+    prazo: fim,
+    prioridade: urgente ? 'Urgente' : (prazos[0] && prazos[0] <= isoMais_(hoje, 1) ? 'Alta' : base.prioridade),
+    etiquetas: areas.join(', '),
+    entregas: entregas,
+    semChecklistCategoria: true
+  });
+  const t = criarTarefa_(d, autor, origem);
+  notificarEntregas_(t, entregas.filter(e => !e.apos), 'nova');
+  return t;
+}
+
+/** Entrega liberada = não depende de outra ou a anterior já foi feita. */
+function entregaLiberada_(t, e) { return !e.apos || ((t.entregas || []).find(x => x.id === e.apos) || { feito: true }).feito; }
+
+function notificarEntregas_(t, lista, tipo) {
+  // um e-mail por pessoa, com todas as entregas dela neste card
+  const porPessoa = {};
+  lista.forEach(e => { if (e.responsavel) (porPessoa[e.responsavel] = porPessoa[e.responsavel] || []).push(e); });
+  Object.keys(porPessoa).forEach(nome => {
+    const m = membro_(nome);
+    if (!m || !m.email || !m.avisos) return;
+    const es = porPessoa[nome];
+    const assunto = tipo === 'vez' ? `▶️ Sua vez: ${t.titulo}` : `📥 ${es.length > 1 ? es.length + ' entregas' : 'Nova entrega'} para você: ${t.titulo}`;
+    enviarEmail_(m.email, assunto, `<p>${tipo === 'vez' ? 'A etapa anterior foi concluída. <b>Pode começar a sua parte:</b>' : '<b>Sua parte nesta demanda:</b>'}</p>
+      <ul style="padding-left:18px">${es.map(e => `<li style="font-size:15px;margin:4px 0">📌 ${esc_(e.texto)}${e.prazo ? ` <span style="color:#6b7280">— prazo ${dataBr_(e.prazo)}</span>` : ''}${!entregaLiberada_(t, e) ? ' <span style="color:#6b7280">(começa depois da etapa anterior)</span>' : ''}</li>`).join('')}</ul>${blocoTarefa_(t)}`);
+  });
+}
+
+/** Ações nas entregas de um card: feito, desfazer, salvar (adicionar/editar), remover. */
+function entregaAcao_(eu, p) {
+  const t = buscarTarefa_(p.id);
+  if (!t) throw new Error('Tarefa não encontrada');
+  const lista = (t.entregas || []).slice();
+  const gestorDoCard = eu.perfil === 'Gestor' || norm_(t.responsavel) === norm_(eu.nome);
+  const e = p.entregaId ? lista.find(x => x.id === p.entregaId) : null;
+  const c = cfg_();
+  const colunas = lista_(c.COLUNAS);
+  let liberadas = [], moverPara = '';
+  if (p.op === 'feito' || p.op === 'desfazer') {
+    if (!e) throw new Error('Entrega não encontrada');
+    if (!gestorDoCard && norm_(e.responsavel) !== norm_(eu.nome)) throw new Error('SEM_PERMISSAO: só quem é responsável pela entrega (ou a coordenação) pode marcar');
+    const feito = p.op === 'feito';
+    if (feito && !entregaLiberada_(t, e)) {
+      const ant = lista.find(x => x.id === e.apos);
+      throw new Error(`Esta etapa depende de "${ant ? ant.texto : 'outra etapa'}"${ant && ant.responsavel ? ' (' + ant.responsavel + ')' : ''}, que ainda não foi concluída`);
+    }
+    e.feito = feito; e.feitoEm = feito ? agora_() : ''; e.feitoPor = feito ? eu.nome : '';
+    registrar_(t.id, eu.nome, feito ? 'Entrega concluída' : 'Entrega reaberta', `${e.texto}${e.responsavel ? ' (' + e.responsavel + ')' : ''}`);
+    if (feito) {
+      liberadas = lista.filter(x => x.apos === e.id && !x.feito);
+      if (lista.every(x => x.feito)) moverPara = colunas.find(x => /revis/i.test(x)) || '';
+      else if (t.status === colunas[0] && colunas[1]) moverPara = colunas[1];
+    }
+  } else if (p.op === 'salvar') {
+    if (!gestorDoCard) throw new Error('SEM_PERMISSAO: só a coordenação ou um gestor organiza as entregas');
+    const d = p.entrega || {};
+    const texto = String(d.texto || '').trim().slice(0, 300);
+    if (!texto) throw new Error('Descreva a entrega');
+    const prazo = /^\d{4}-\d{2}-\d{2}$/.test(d.prazo || '') ? d.prazo : '';
+    const apos = d.apos && lista.some(x => x.id === d.apos && x.id !== d.id) ? d.apos : '';
+    if (d.id) {
+      const x = lista.find(y => y.id === d.id);
+      if (!x) throw new Error('Entrega não encontrada');
+      const novoResp = x.responsavel !== (d.responsavel || '');
+      Object.assign(x, { texto: texto, responsavel: d.responsavel || '', prazo: prazo, apos: apos, area: d.area || x.area || '' });
+      if (novoResp && x.responsavel && !x.feito && entregaLiberada_({ entregas: lista }, x)) liberadas = [x];
+      registrar_(t.id, eu.nome, 'Entrega editada', texto);
+    } else {
+      const x = { id: uid_(), area: d.area || '', texto: texto, responsavel: d.responsavel || '', prazo: prazo, feito: false, feitoEm: '', feitoPor: '', apos: apos };
+      lista.push(x);
+      if (x.responsavel && entregaLiberada_({ entregas: lista }, x)) liberadas = [x];
+      registrar_(t.id, eu.nome, 'Entrega adicionada', `${texto}${x.responsavel ? ' (' + x.responsavel + ')' : ''}`);
+    }
+  } else if (p.op === 'remover') {
+    if (!gestorDoCard) throw new Error('SEM_PERMISSAO: só a coordenação ou um gestor organiza as entregas');
+    if (!e) throw new Error('Entrega não encontrada');
+    lista.forEach(x => { if (x.apos === e.id) x.apos = e.apos || ''; }); // quem dependia dela passa a depender da anterior
+    lista.splice(lista.indexOf(e), 1);
+    registrar_(t.id, eu.nome, 'Entrega removida', e.texto);
+  } else throw new Error('Operação inválida');
+
+  t.entregas = lista;
+  // prazo do card acompanha a última entrega
+  const prazos = lista.map(x => x.prazo).filter(Boolean).sort();
+  const campos = { entregas: lista };
+  if (prazos.length && prazos[prazos.length - 1] !== t.prazo) campos.prazo = prazos[prazos.length - 1];
+  if (moverPara && moverPara !== t.status && t.status !== c.COLUNA_FINAL) campos.status = moverPara;
+  const r = alterar_(t.id, campos, eu.nome);
+  const pos = () => {
+    if (liberadas.length) notificarEntregas_(r, liberadas, p.op === 'feito' ? 'vez' : 'nova');
+    if (campos.status && /revis/i.test(campos.status)) {
+      const m = membro_(r.responsavel);
+      if (m && m.email && m.avisos) enviarEmail_(m.email, `✅ Todas as entregas concluídas: ${r.titulo}`, `<p>Todas as partes desta demanda foram marcadas como feitas. O card foi para <b>${esc_(campos.status)}</b> para a conferência final.</p>${blocoTarefa_(r)}`);
+    }
+  };
+  if (POS_) POS_.push(pos); else pos();
+  return toClient_(r);
+}
+
+/** Itens de trabalho de uma pessoa: cards dela (sem entregas) + entregas pendentes dela nos cards colaborativos. */
+function itensDaPessoa_(abertas, nome) {
+  const out = [];
+  abertas.forEach(t => {
+    const ent = t.entregas || [];
+    if (norm_(t.responsavel) === norm_(nome) && (!ent.length || ent.some(e => !e.feito))) {
+      if (!ent.length) out.push(t);
+      else if (!ent.some(e => norm_(e.responsavel) === norm_(nome))) out.push(Object.assign({}, t, { titulo: t.titulo + ' (acompanhamento)' }));
+    }
+    ent.filter(e => !e.feito && norm_(e.responsavel) === norm_(nome)).forEach(e => out.push({
+      titulo: `${t.titulo} → ${e.texto}`, responsavel: nome, prazo: e.prazo, prioridade: t.prioridade, status: t.status,
+      atualizadoEm: t.atualizadoEm, aguardando: entregaLiberada_(t, e) ? '' : ((ent.find(x => x.id === e.apos) || {}).responsavel || 'etapa anterior'), id: t.id
+    }));
+  });
+  return out;
 }
 
 function desdobrar_(namedValues) {
@@ -1041,7 +1212,8 @@ function criarTarefa_(d, autor, origem) {
     emailSolicitante: d.emailSolicitante || '',
     briefing: d.briefing || (d.descricao ? [{ p: 'Descrição', r: d.descricao }] : []),
     anexos: d.anexos || [],
-    checklist: (d.checklistExtra || []).concat(cat ? cat.checklist : []).map(txt => ({ id: uid_(), texto: txt, feito: false })),
+    checklist: (d.checklistExtra || []).concat(cat && !d.semChecklistCategoria ? cat.checklist : []).map(txt => ({ id: uid_(), texto: txt, feito: false })),
+    entregas: d.entregas || [],
     estimativa: d.estimativa || '',
     tempoMin: '0', timerInicio: '', timerAutor: '', eventoId: '',
     arquivada: 'NAO', concluidaEm: '', atualizadoEm: agora_(),
@@ -1074,7 +1246,7 @@ function alterar_(id, campos, autor, semAutomacao) {
       if (k === 'checklist') {
         const feitos = v.filter(i => i.feito).length;
         registrar_(id, autor, 'Checklist', `${feitos}/${v.length} concluídos`);
-      } else registrar_(id, autor, 'Anexos', `${v.length} anexo(s)`);
+      } else if (k === 'anexos') registrar_(id, autor, 'Anexos', `${v.length} anexo(s)`);
       return;
     }
     v = String(v);
@@ -1096,7 +1268,8 @@ function alterar_(id, campos, autor, semAutomacao) {
     if (t.responsavel !== antes.responsavel) efeitos = efeitos.concat(executarAutomacoes_('Responsável mudou', t, antes));
   }
 
-  const agendaMudou = ['titulo', 'prazo', 'responsavel', 'status', 'arquivada', 'categoria'].some(k => t[k] !== antes[k]);
+  const agendaMudou = ['titulo', 'prazo', 'responsavel', 'status', 'arquivada', 'categoria'].some(k => t[k] !== antes[k])
+    || JSON.stringify(t.entregas || []) !== JSON.stringify(antes.entregas || []);
   salvarTarefa_(t);
 
   // Agenda e e-mails são lentos: rodam depois de liberar a trava, para não segurar o quadro
@@ -1247,7 +1420,10 @@ function verificarAtrasos_() {
     if (efeitos.length) { salvarTarefa_(t); efeitos.forEach(f => f()); }
   });
   const porPessoa = {};
-  atrasadas.concat(vencemHoje).forEach(t => (porPessoa[t.responsavel || ''] = porPessoa[t.responsavel || ''] || []).push(t));
+  equipe_().forEach(m => {
+    const its = itensDaPessoa_(abertas, m.nome).filter(t => t.prazo && t.prazo <= hoje);
+    if (its.length) porPessoa[m.nome] = its;
+  });
   Object.keys(porPessoa).forEach(nome => {
     const m = membro_(nome);
     if (!m || !m.email || !m.avisos) return;
@@ -1528,6 +1704,7 @@ function sincronizarAgenda_(t) {
       `Status: ${t.status}`,
       `Prioridade: ${t.prioridade}`,
       `Solicitante: ${t.solicitante || '—'} ${t.contato ? '(' + t.contato + ')' : ''}`,
+      ...((t.entregas || []).length ? ['', 'Entregas:', ...(t.entregas || []).map(e => `${e.feito ? '✅' : '◻️'} ${e.responsavel || '—'}: ${e.texto}${e.prazo ? ' (até ' + dataBr_(e.prazo) + ')' : ''}`)] : []),
       '',
       ...(t.briefing || []).slice(0, 8).map(b => `• ${b.p}: ${b.r}`),
       '',
@@ -1537,8 +1714,10 @@ function sincronizarAgenda_(t) {
     const hora = (c.AGENDA_HORA_ENTREGA || '').match(/^(\d{1,2}):(\d{2})$/);
     const ini = hora ? new Date(a, m - 1, d, Number(hora[1]), Number(hora[2])) : new Date(a, m - 1, d);
     const fim = hora ? new Date(ini.getTime() + 30 * 60000) : null;
-    const resp = membro_(t.responsavel);
-    const convidado = c.AGENDA_CONVIDAR_RESPONSAVEL === 'SIM' && resp && resp.email ? resp.email.toLowerCase() : '';
+    // convidados: responsável do card + quem tem entrega nele
+    const convidados = c.AGENDA_CONVIDAR_RESPONSAVEL !== 'SIM' ? [] : [...new Set([t.responsavel].concat((t.entregas || []).map(e => e.responsavel))
+      .map(n => (membro_(n) || {}).email).filter(Boolean).map(e => e.toLowerCase()))];
+    const convidado = convidados.join(',');
 
     if (!ev) {
       const op = { description: descricao, sendInvites: c.AGENDA_CONVITE_POR_EMAIL === 'SIM' };
@@ -1550,8 +1729,8 @@ function sincronizarAgenda_(t) {
       ev.setTitle(titulo);
       ev.setDescription(descricao);
       if (hora) ev.setTime(ini, fim); else ev.setAllDayDate(ini);
-      ev.getGuestList().forEach(g => { if (g.getEmail().toLowerCase() !== convidado) ev.removeGuest(g.getEmail()); });
-      if (convidado && !ev.getGuestList().some(g => g.getEmail().toLowerCase() === convidado)) ev.addGuest(convidado);
+      ev.getGuestList().forEach(g => { if (convidados.indexOf(g.getEmail().toLowerCase()) < 0) ev.removeGuest(g.getEmail()); });
+      convidados.forEach(em => { if (!ev.getGuestList().some(g => g.getEmail().toLowerCase() === em)) ev.addGuest(em); });
     }
     ev.setColor(concluida ? CalendarApp.EventColor.GREEN
       : t.prioridade === 'Urgente' ? CalendarApp.EventColor.RED
@@ -1681,7 +1860,9 @@ function lerAba_(nome) {
 function categorias_() {
   return lerAba_(ABA.CATEGORIAS).filter(r => r[0]).map(r => ({
     nome: r[0], responsavel: r[1], cor: r[2] || '#64748B', sla: Number(r[3]) || 0,
-    checklist: lista_(r[4], ';')
+    checklist: lista_(r[4], ';'),
+    // "Captação=Emily; Edição" → etapas em sequência; sem nome = responsável da área naquele pedido
+    etapas: lista_(r[5] || '', ';').map(x => { const [nome, resp] = x.split('='); return { nome: String(nome || '').trim(), responsavel: String(resp || '').trim() }; }).filter(e => e.nome)
   }));
 }
 
@@ -1748,7 +1929,7 @@ function resumoSemanal_(forcar) {
     return g;
   };
   const url = ScriptApp.getService().getUrl();
-  const item = (t, comResp) => `<li style="margin:3px 0"><b>${esc_(t.titulo)}</b>${comResp ? ' — ' + esc_(t.responsavel || 'sem responsável') : ''}${t.prazo ? ' · prazo ' + dataBr_(t.prazo) : ''}${classe(t) === 'atencao' ? ` <span style="color:#b54708">(${esc_(motivo(t))})</span>` : ''}</li>`;
+  const item = (t, comResp) => `<li style="margin:3px 0"><b>${esc_(t.titulo)}</b>${comResp ? ' — ' + esc_(t.responsavel || 'sem responsável') : ''}${t.prazo ? ' · prazo ' + dataBr_(t.prazo) : ''}${t.aguardando ? ` <span style="color:#6b7280">(aguardando ${esc_(t.aguardando)})</span>` : ''}${classe(t) === 'atencao' ? ` <span style="color:#b54708">(${esc_(motivo(t))})</span>` : ''}</li>`;
   const secao = (cor, titulo, lista, comResp) => lista.length ? `<h3 style="margin:18px 0 6px;color:${cor};font-size:15px">${titulo} (${lista.length})</h3><ul style="padding-left:18px;margin:0">${lista.slice(0, 25).map(t => item(t, comResp)).join('')}</ul>${lista.length > 25 ? `<p style="color:#6b7280">+ ${lista.length - 25} no quadro</p>` : ''}` : '';
   const blocos = (g, comResp) => secao('#b42318', '🔴 Em atraso', g.atraso, comResp) + secao('#b54708', '🟠 Muito perto do prazo (até 2 dias)', g.perto, comResp)
     + secao('#93370d', '⚠️ Precisa de atenção', g.atencao, comResp) + secao('#027a48', '🟢 Dentro do prazo', g.ok, comResp);
@@ -1758,7 +1939,7 @@ function resumoSemanal_(forcar) {
   const semana = `${dataBr_(hoje).slice(0, 5)} a ${dataBr_(fimSemana).slice(0, 5)}`;
   let n = 0;
   equipe_().filter(m => m.email && m.resumo).forEach(m => {
-    const minhas = grupos(abertas.filter(t => norm_(t.responsavel) === norm_(m.nome)));
+    const minhas = grupos(itensDaPessoa_(abertas, m.nome));
     const total = minhas.atraso.length + minhas.perto.length + minhas.atencao.length + minhas.ok.length;
     const html = `<h2 style="margin:0 0 4px">Olá, ${esc_(m.nome.split(' ')[0])}! Sua semana (${semana})</h2>
       ${total ? `<p>Você tem <b>${total}</b> demanda(s) em aberto.</p>${blocos(minhas, false)}` : '<p>Você não tem demandas em aberto. 🙌</p>'}
@@ -1875,7 +2056,18 @@ function abaRespostas_() {
   return ss.getSheets().find(s => /^(respostas ao formulário|form responses|respuestas de formulario)/i.test(s.getName())) || null;
 }
 
-function shTarefas_() { return ss_().getSheetByName(ABA.TAREFAS); }
+let _tarefasOk = false;
+function shTarefas_() {
+  const sh = ss_().getSheetByName(ABA.TAREFAS);
+  if (sh && !_tarefasOk) {
+    // planilhas antigas: cria as colunas novas (ex.: Entregas) no fim
+    if (sh.getMaxColumns() < CAMPOS.length) sh.insertColumnsAfter(sh.getMaxColumns(), CAMPOS.length - sh.getMaxColumns());
+    const cab = sh.getRange(1, 1, 1, CAMPOS.length).getDisplayValues()[0];
+    CAMPOS.forEach((c, i) => { if (!cab[i]) sh.getRange(1, i + 1).setValue(c[1]).setFontWeight('bold').setBackground('#1F3A5F').setFontColor('#FFFFFF'); });
+    _tarefasOk = true;
+  }
+  return sh;
+}
 
 function lerTarefas_() {
   const sh = shTarefas_();

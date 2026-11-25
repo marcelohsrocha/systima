@@ -253,6 +253,16 @@ html.dark .rec-st.on{color:#6CE9A6}
 .rec-row.off{opacity:.6}
 .rec-t{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:560px){.rec-row{flex-wrap:wrap}}
+.ent{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line2)}
+.ent input{width:18px;height:18px;margin-top:2px;accent-color:var(--brand);flex-shrink:0}
+.ent-t{font-weight:500;line-height:1.35}
+.ent.feito .ent-t{text-decoration:line-through;color:var(--muted)}
+.ent.bloq{opacity:.75}
+.ent-m{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:3px;font-size:12px;color:var(--muted)}
+.ent-m .late{color:var(--red);font-weight:600}.ent-m .soon{color:var(--amber);font-weight:600}
+.est{font-weight:600}.est.ok{color:var(--green)}.est.esp{color:var(--soft)}.est.vez{color:var(--brandTxt)}
+.stack{display:inline-flex}.stack .av{margin-left:-6px;box-shadow:0 0 0 2px var(--panel)}.stack .av:first-child{margin-left:0}
+.vez{font-size:12px;font-weight:600;color:var(--brandTxt);background:color-mix(in srgb,var(--brand) 10%,var(--panel));border-radius:6px;padding:3px 8px;margin-top:6px;display:inline-block}
 .docs{padding:18px;max-width:1200px;margin:0 auto}
 .docs-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;background:var(--panel);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow)}
 .docs-pasta{margin:18px 0 8px;font-size:14px;color:var(--bgTxt,var(--text2));display:flex;gap:6px;align-items:baseline}
@@ -469,11 +479,11 @@ function trocarView(v){S.view=v;lsSet('qd_view',v);montarFiltros();render()}
 function filtradas(){
   const q=S.f.q.trim().toLowerCase();
   return S.tarefas.filter(t=>{
-    if(S.f.cat&&t.categoria!==S.f.cat)return false;
+    if(S.f.cat&&t.categoria!==S.f.cat&&!ents(t).some(e=>e.area===S.f.cat))return false;
     if(S.f.resp==='__none'&&t.responsavel)return false;
-    if(S.f.resp&&S.f.resp!=='__none'&&t.responsavel!==S.f.resp)return false;
+    if(S.f.resp&&S.f.resp!=='__none'&&t.responsavel!==S.f.resp&&!temMinha(t,S.f.resp))return false;
     if(S.f.prio&&t.prioridade!==S.f.prio)return false;
-    if(S.f.minhas&&t.responsavel!==S.eu)return false;
+    if(S.f.minhas&&t.responsavel!==S.eu&&!temMinha(t,S.eu))return false;
     if(S.f.atras&&situacaoPrazo(t)!=='late')return false;
     if(S.f.arq&&t.arquivada!=='SIM')return false;
     if(q){const hay=[t.titulo,t.solicitante,t.categoria,t.responsavel,t.etiquetas,(t.briefing||[]).map(b=>b.r).join(' ')].join(' ').toLowerCase();if(!hay.includes(q))return false}
@@ -496,8 +506,66 @@ function render(){
 }
 
 /* ---------- Kanban ---------- */
+/* ---------- entregas (demanda colaborativa) ---------- */
+function entregasHTML(t){
+  const l=ents(t),gc=gestorDoCard(t),ep=entProg(t);
+  if(!l.length&&!gc)return '';
+  const hoje=hojeISO();
+  const linha=e=>{
+    const lib=entLiberada(t,e),ant=e.apos?l.find(x=>x.id===e.apos):null;
+    const meu=S.me&&e.responsavel===S.me.nome,pm=(gc||meu)&&perfil()!=='Leitor';
+    const late=!e.feito&&e.prazo&&e.prazo<hoje,soon=!e.feito&&e.prazo&&!late&&diasEntre(hoje,e.prazo)<=2;
+    const est=e.feito?`<span class="est ok">✓ feito${e.feitoPor&&e.feitoPor!==e.responsavel?' por '+esc(e.feitoPor):''}</span>`:!lib?`<span class="est esp">⏳ aguardando ${esc(ant&&ant.responsavel||'etapa anterior')}</span>`:meu?'<span class="est vez">▶ sua vez</span>':'';
+    return `<div class="ent ${e.feito?'feito':''} ${!lib&&!e.feito?'bloq':''}">
+      <input type="checkbox" ${e.feito?'checked':''} ${pm&&(lib||e.feito)?'':'disabled'} title="${!lib&&!e.feito?'Depende da etapa anterior':pm?'Marcar como feita':'Só quem é responsável pela entrega ou a coordenação marca'}" onchange="entregaOp('${t.id}',this.checked?'feito':'desfazer','${e.id}')">
+      <div style="flex:1;min-width:0"><div class="ent-t">${esc(e.texto)}</div>
+        <div class="ent-m">${e.area?`<span class="label">${esc(e.area)}</span>`:''}${e.prazo?`<span class="${late?'late':soon?'soon':''}">🗓 ${fmtD(e.prazo)}${late?' · atrasada':''}</span>`:''}${est}</div></div>
+      <span title="${esc(e.responsavel||'Sem responsável')}">${av(e.responsavel)}</span>
+      ${gc?`<button class="btn ghost sm" title="Editar" onclick="abrirEntrega('${t.id}','${e.id}')">✏️</button>`:''}
+    </div>`};
+  return `<div class="sec"><h5>👥 Entregas <span class="c">${ep?ep.f+'/'+ep.n:''}</span></h5>
+    ${ep?`<div class="prog" style="margin:0 0 8px"><i style="width:${ep.p}%"></i></div>`:''}
+    ${l.map(linha).join('')||'<div class="sub">Divida esta demanda entre a equipe: cada pessoa fica com a sua parte e o seu prazo.</div>'}
+    ${gc?`<button class="btn sm" style="margin-top:8px" onclick="abrirEntrega('${t.id}')">＋ Adicionar entrega</button>`:''}
+    ${l.length?'<div class="sub" style="margin-top:6px">Quando todas forem marcadas, o card vai sozinho para Revisão.</div>':''}
+  </div>`;
+}
+function abrirEntrega(tid,eid){
+  const t=tarefa(tid),e=ents(t).find(x=>x.id===eid)||{};
+  const outras=ents(t).filter(x=>x.id!==eid);
+  modal(`<h3>${eid?'✏️ Editar entrega':'＋ Nova entrega'}</h3><div class="fgrid">
+    <div class="full"><label>O que entregar</label><input class="inp" id="eTxt" value="${esc(e.texto||'')}" placeholder="Ex.: Edição do VT"></div>
+    <div><label>Responsável</label><select class="inp" id="eResp"><option value="">— Sem responsável —</option>${S.equipe.map(m=>`<option ${m.nome===e.responsavel?'selected':''}>${esc(m.nome)}</option>`).join('')}</select></div>
+    <div><label>Prazo</label><input class="inp" type="date" id="ePrazo" value="${esc(e.prazo||'')}"></div>
+    <div><label>Área</label><select class="inp" id="eArea"><option value="">—</option>${S.cats.map(c=>`<option ${c.nome===e.area?'selected':''}>${esc(c.nome)}</option>`).join('')}</select></div>
+    <div><label>Começa depois de</label><select class="inp" id="eApos"><option value="">— Pode começar já —</option>${outras.map(x=>`<option value="${x.id}" ${x.id===e.apos?'selected':''}>${esc((x.responsavel?x.responsavel+': ':'')+x.texto).slice(0,60)}</option>`).join('')}</select></div>
+  </div><p class="sub">Com “Começa depois de”, a pessoa só recebe o aviso quando a etapa anterior for marcada como feita.</p>
+  <div style="display:flex;gap:8px;margin-top:10px">${eid?`<button class="btn" style="color:var(--red)" onclick="if(confirm('Remover esta entrega?'))entregaOp('${tid}','remover','${eid}')">Remover</button>`:''}<span class="sp"></span>
+    <button class="btn" onclick="fecharModal()">Cancelar</button><button class="btn pri" onclick="salvarEntrega('${tid}','${eid||''}')">Salvar</button></div>`);
+  setTimeout(()=>$('eTxt').focus(),50);
+}
+function salvarEntrega(tid,eid){
+  const d={id:eid,texto:$('eTxt').value.trim(),responsavel:$('eResp').value,prazo:$('ePrazo').value,area:$('eArea').value,apos:$('eApos').value};
+  if(!d.texto){toast('Descreva a entrega');return}
+  entregaOp(tid,'salvar','',d);
+}
+async function entregaOp(tid,op,eid,entrega){
+  let r;try{r=await call('entrega',{id:tid,op,entregaId:eid,entrega})}catch(e){toast(msgErro(e));renderDrawer();return}
+  if($('modal').classList.contains('on'))fecharModal();
+  const i=S.tarefas.findIndex(x=>x.id===tid);if(i>=0)S.tarefas[i]=Object.assign({},S.tarefas[i],r);
+  render();renderDrawer();
+  const ep=entProg(r);
+  toast(op==='feito'?(ep&&ep.f===ep.n?'✅ Todas as entregas feitas: o card foi para Revisão':'✓ Entrega concluída'):op==='desfazer'?'Entrega reaberta':op==='remover'?'Entrega removida':'Entrega salva');
+}
+function ents(t){return t.entregas||[]}
+function entLiberada(t,e){if(!e.apos)return true;const a=ents(t).find(x=>x.id===e.apos);return !a||a.feito}
+function entProg(t){const l=ents(t);if(!l.length)return null;const f=l.filter(e=>e.feito).length;return {f,n:l.length,p:Math.round(f/l.length*100)}}
+function donos(t){return [...new Set(ents(t).map(e=>e.responsavel).filter(Boolean))]}
+function minhaVez(t){return S.me&&ents(t).some(e=>!e.feito&&e.responsavel===S.me.nome&&entLiberada(t,e))}
+function temMinha(t,nome){return ents(t).some(e=>!e.feito&&e.responsavel===nome)}
+function gestorDoCard(t){return gestor()||(S.me&&t.responsavel===S.me.nome&&perfil()!=='Leitor')}
 function cardHTML(t){
-  const c=cat(t.categoria);const pr=checkProg(t);
+  const c=cat(t.categoria);const ep=entProg(t);const pr=ep||checkProg(t);const ds=donos(t);
   return `<div class="card" draggable="${pode(t)}" data-id="${t.id}" style="--cat:${c.cor}" onclick="abrir('${t.id}')">
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
       <span class="tag" style="--c:${c.cor}">${esc(c.nome)}</span>
@@ -506,16 +574,17 @@ function cardHTML(t){
     </div>
     <div class="t">${ehNova(t.id)?'<span class="novo">NOVA</span> ':''}${esc(t.titulo)}</div>
     ${t.solicitante?`<div class="s">${esc(t.solicitante)}</div>`:''}
-    ${pr?`<div class="prog" title="${pr.f}/${pr.n} itens"><i style="width:${pr.p}%"></i></div>`:''}
+    ${pr?`<div class="prog" title="${pr.f}/${pr.n} ${ep?'entregas':'itens'}"><i style="width:${pr.p}%"></i></div>`:''}
+    ${minhaVez(t)?'<div class="vez">▶ Sua parte está liberada</div>':''}
     <div class="meta">
       ${chipPrazo(t)}
-      ${pr?`<span>☑ ${pr.f}/${pr.n}</span>`:''}
+      ${ep?`<span title="Entregas concluídas">👥 ${ep.f}/${ep.n}</span>`:pr?`<span>☑ ${pr.f}/${pr.n}</span>`:''}
       ${t.comentarios?`<span>💬 ${t.comentarios}</span>`:''}
       ${(t.anexos||[]).length?`<span>📎 ${t.anexos.length}</span>`:''}
       ${t.timerInicio?`<span class="timer-on">● rodando</span>`:''}
       ${t.eventoId?'<span title="Na agenda">📅</span>':''}
       ${ehRecorrente(t)?`<span title="Demanda recorrente${recDe(t)?': '+esc(recDe(t).texto):''}">🔁</span>`:''}
-      <span class="r">${av(t.responsavel)}</span>
+      <span class="r">${ds.length?`<span class="stack" title="Entregas: ${esc(ds.join(', '))}">${ds.slice(0,4).map(n=>av(n)).join('')}${ds.length>4?`<span class="av none">+${ds.length-4}</span>`:''}</span>`:av(t.responsavel)}</span>
     </div>
   </div>`;
 }
@@ -647,7 +716,9 @@ function renderCarga(m,ts){
   const pessoas=[...S.equipe.map(p=>p.nome),''];
   const linha=nome=>{
     const p=S.equipe.find(x=>x.nome===nome)||{capacidade:0};
-    const minhas=abertas.filter(t=>(t.responsavel||'')===nome);
+    const minhas=[];abertas.forEach(t=>{const l=ents(t);
+      if(!l.length){if((t.responsavel||'')===nome)minhas.push(t);return}
+      l.filter(e=>!e.feito&&(e.responsavel||'')===nome).forEach(e=>minhas.push({prazo:e.prazo,estimativa:0,_e:1,status:t.status}));});
     if(!nome&&!minhas.length)return '';
     const atras=minhas.filter(t=>situacaoPrazo(t)==='late');
     const cel=(lista,label)=>{
@@ -889,7 +960,7 @@ function renderDrawer(){
     ${gestor()?`<button class="btn sm" onclick="salvarCampo('${t.id}','arquivada','${t.arquivada==='SIM'?'NAO':'SIM'}');fecharDrawer()">${t.arquivada==='SIM'?'↩ Desarquivar':'🗄️ Arquivar'}</button>`:''}
     <button class="btn ghost sm" onclick="fecharDrawer()" style="font-size:18px">✕</button></div>
   <div class="dr-b">
-    ${ed?'':`<div class="lock">🔒 ${perfil()==='Leitor'?'Seu perfil é de leitura.':'Esta demanda é de '+esc(t.responsavel)+'. Você pode comentar, mas só o responsável ou um gestor altera.'}</div>`}
+    ${ed?'':`<div class="lock">🔒 ${perfil()==='Leitor'?'Seu perfil é de leitura.':temMinha(t,S.me&&S.me.nome)||ents(t).some(e=>e.responsavel===(S.me&&S.me.nome))?'Esta demanda é acompanhada por '+esc(t.responsavel)+'. Você marca as suas entregas abaixo e pode comentar.':'Esta demanda é de '+esc(t.responsavel)+'. Você pode comentar, mas só o responsável ou um gestor altera.'}</div>`}
     <input class="dr-title" ${dis} value="${esc(t.titulo)}" onchange="salvarCampo('${t.id}','titulo',this.value)">
     <div class="props">
       <label>Status</label>${sel('status',S.cfg.colunas,t.status)}
@@ -897,11 +968,12 @@ function renderDrawer(){
       <label>Prazo</label><input type="date" class="inp" ${dis} value="${esc(t.prazo)}" onchange="salvarCampo('${t.id}','prazo',this.value)">
       <label>Início</label><input type="date" class="inp" ${dis} value="${esc(t.inicio)}" onchange="salvarCampo('${t.id}','inicio',this.value)">
       <label>Prioridade</label>${sel('prioridade',S.cfg.prioridades,t.prioridade)}
-      <label>Categoria</label>${sel('categoria',S.cats.map(x=>x.nome),t.categoria,'—')}
+      <label>Categoria</label>${sel('categoria',[...new Set(S.cats.map(x=>x.nome).concat(t.categoria?[t.categoria]:[]))],t.categoria,'—')}
       <label>Etiquetas</label><input class="inp" ${dis} value="${esc(t.etiquetas)}" placeholder="separe por vírgula" onchange="salvarCampo('${t.id}','etiquetas',this.value)">
       <label>Estimativa</label><input class="inp" ${dis} type="number" min="0" step="0.5" value="${esc(t.estimativa)}" placeholder="horas" onchange="salvarCampo('${t.id}','estimativa',this.value)">
     </div>
     ${recDrawerHTML(t)}
+    ${entregasHTML(t)}
 
     <div class="sec"><h5>⏱ Tempo</h5><div class="time">
       <span class="big" id="tempoBig">${fmtMin(t.tempoMin)}</span>${t.estimativa?`<span class="sub">de ${t.estimativa}h estimadas</span>`:''}
@@ -1369,6 +1441,11 @@ function mockSeed(){
     T('Suporte técnico: Transmissão do webinar','Suporte técnico','Em produção','Diego',d(12),'Normal','Marketing','',[{p:'Plataforma',r:'YouTube + Zoom'}],1,{estimativa:'5',timerInicio:String(Date.now()-23*60000),timerAutor:'Diego'}),
     T('Design: Convite do evento de clientes','Design','Revisão','Bruna',d(4),'Normal','Comercial','(11) 99456-7788',[{p:'Formato',r:'Convite impresso A5 + digital'}],3,{estimativa:'4',tempoMin:'180'})];
   tarefas[0].comentarios=2;tarefas[2].comentarios=1;
+  tarefas.push(T('Formatura dos cursos','Design','Em produção','Ana',d(9),'Alta','Ministério de Ensino','',[{p:'Descrição',r:'Culto de formatura com entrega de certificados.'}],0,{categoria:'Várias áreas',etiquetas:'Design, Vídeo, Fotografia',checklist:[],entregas:[
+    {id:'e1',area:'Design',texto:'Arte para redes e telão',responsavel:'Bruna',prazo:d(3),feito:true,feitoEm:h+' 09:00',feitoPor:'Bruna',apos:''},
+    {id:'e2',area:'Vídeo',texto:'Captação — depoimentos dos formandos',responsavel:'Carla',prazo:d(4),feito:false,feitoEm:'',feitoPor:'',apos:''},
+    {id:'e3',area:'Vídeo',texto:'Edição — VT da formatura',responsavel:'Diego',prazo:d(7),feito:false,feitoEm:'',feitoPor:'',apos:'e2'},
+    {id:'e4',area:'Fotografia',texto:'Cobertura do culto',responsavel:'Carla',prazo:d(9),feito:false,feitoEm:'',feitoPor:'',apos:''}]}));
   const recs=[
     {id:'R1',ativa:true,titulo:'Relatório semanal de redes',categoria:'Redes sociais',responsavel:'Bruna',freq:'Semanal',dia:'',aCada:'',inicio:d(-7),ultima:h,prazoDias:'2',criadoPor:'Ana'},
     {id:'R2',ativa:true,titulo:'Backup do Drive',categoria:'Suporte técnico',responsavel:'Diego',freq:'Personalizada',dia:'',aCada:'10',inicio:d(-10),ultima:h,prazoDias:'1',criadoPor:'Ana'},
@@ -1410,6 +1487,17 @@ function mockApi(acao,p){
     case 'docSalvar':{if(!p.titulo||!/^https:\/\//.test(p.link))throw new Error('Nome e link https:// são obrigatórios');
       if(p.id){const d=DB.docs.find(x=>x.id===p.id);if(me.perfil!=='Gestor'&&d.autor!==me.nome)throw new Error('SEM_PERMISSAO: só um gestor ou quem adicionou pode editar');Object.assign(d,{titulo:p.titulo,link:p.link,pasta:p.pasta||'Geral',descricao:p.descricao})}
       else DB.docs.push({id:'d'+Date.now(),titulo:p.titulo,link:p.link,pasta:p.pasta||'Geral',descricao:p.descricao,autor:me.nome,data:agora()});return JSON.parse(JSON.stringify(DB.docs))}
+    case 'entrega':{const t=find(p.id);const l=JSON.parse(JSON.stringify(t.entregas||[]));const gc=me.perfil==='Gestor'||t.responsavel===me.nome;const e=l.find(x=>x.id===p.entregaId);
+      const cols=['Novo','Em produção','Revisão','Entregue'];
+      if(p.op==='feito'||p.op==='desfazer'){if(!gc&&e.responsavel!==me.nome)throw new Error('SEM_PERMISSAO: só quem é responsável pela entrega (ou a coordenação) pode marcar');
+        if(p.op==='feito'&&e.apos&&!(l.find(x=>x.id===e.apos)||{feito:true}).feito)throw new Error('Esta etapa depende da anterior, que ainda não foi concluída');
+        e.feito=p.op==='feito';e.feitoEm=e.feito?agora():'';e.feitoPor=e.feito?me.nome:'';log(t.id,e.feito?'Entrega concluída':'Entrega reaberta',e.texto);
+        if(e.feito&&l.every(x=>x.feito))t.status='Revisão';else if(e.feito&&t.status===cols[0])t.status=cols[1];}
+      else if(p.op==='salvar'){if(!gc)throw new Error('SEM_PERMISSAO: só a coordenação ou um gestor organiza as entregas');const d=p.entrega;
+        if(d.id)Object.assign(l.find(x=>x.id===d.id),{texto:d.texto,responsavel:d.responsavel,prazo:d.prazo,apos:d.apos,area:d.area});
+        else l.push({id:'e'+Date.now(),texto:d.texto,responsavel:d.responsavel,prazo:d.prazo,apos:d.apos,area:d.area,feito:false,feitoEm:'',feitoPor:''});log(t.id,'Entrega salva',d.texto)}
+      else if(p.op==='remover'){if(!gc)throw new Error('SEM_PERMISSAO: só a coordenação ou um gestor organiza as entregas');l.forEach(x=>{if(x.apos===e.id)x.apos=e.apos||''});l.splice(l.indexOf(e),1)}
+      t.entregas=l;const pz=l.map(x=>x.prazo).filter(Boolean).sort();if(pz.length)t.prazo=pz[pz.length-1];t.atualizadoEm=agora();return JSON.parse(JSON.stringify(t))}
     case 'docExcluir':{const d=DB.docs.find(x=>x.id===p.id);if(me.perfil!=='Gestor'&&d.autor!==me.nome)throw new Error('SEM_PERMISSAO: só um gestor ou quem adicionou pode remover');DB.docs=DB.docs.filter(x=>x!==d);return JSON.parse(JSON.stringify(DB.docs))}
     case 'recorrenciaAlternar':{const r=DB.recs.find(x=>x.id===p.id);if(!r)throw new Error('Recorrência não encontrada');
       if(me.perfil!=='Gestor'&&r.criadoPor!==me.nome&&r.responsavel!==me.nome)throw new Error('SEM_PERMISSAO: só um gestor, quem criou ou o responsável pausa esta recorrência');

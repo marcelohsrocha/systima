@@ -253,6 +253,12 @@ html.dark .rec-st.on{color:#6CE9A6}
 .rec-row.off{opacity:.6}
 .rec-t{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:560px){.rec-row{flex-wrap:wrap}}
+.sws{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:8px}
+.sw{height:40px;border-radius:9px;border:1px solid var(--line);position:relative;padding:0;font-size:11px;color:var(--muted)}
+.sw:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+.sw.on{outline:2px solid var(--brand);outline-offset:2px}
+html.fundo-escuro .vazio,html.fundo-escuro main>.load,html.fundo-escuro .cal-nav .sub,html.fundo-escuro .wl>.sub{color:var(--bgMuted)}
+html.fundo-escuro .cal-nav h3{color:var(--bgTxt)}
 </style>
 </head>
 <body>
@@ -265,6 +271,7 @@ html.dark .rec-st.on{color:#6CE9A6}
       <div class="sub" id="resumo">carregando…</div>
     </div>
     <div class="sp"></div>
+    <button class="btn ghost tema" onclick="abrirFundo()" title="Cor de fundo">🎨</button>
     <button class="btn ghost tema" id="btnTema" onclick="alternarTema()" title="Modo escuro">🌙</button>
     <button class="btn ghost hide-m" onclick="carregar(true)" title="Atualizar">⟳ Atualizar</button>
     <button class="btn hide-m" id="btnLimpar" style="display:none" onclick="abrirLimpeza()">🧹 Limpar</button>
@@ -360,6 +367,7 @@ async function carregar(manual,silencioso){
     $('btnLimpar').style.display=gestor()?'':'none';
     $('btnRec').style.display=S.me&&(S.recs.length||perfil()!=='Leitor')?'':'none';
     document.documentElement.style.setProperty('--brand',S.cfg.cor||'#1F3A5F');
+    aplicarFundo();
     document.getElementById('nomeQuadro').textContent=S.cfg.nome||'Quadro de Demandas';
     document.getElementById('logo').textContent=(S.cfg.nome||'Q').trim()[0].toUpperCase();
     document.title=S.cfg.nome||'Quadro de Demandas';
@@ -671,6 +679,52 @@ renderDrawer=function(){
   const nv=$('drawer').querySelector('.dr-b');if(nv&&top)nv.scrollTop=top;
 };
 function alternarTema(){const d=document.documentElement.classList.toggle('dark');try{localStorage.setItem('qd_tema',d?'escuro':'claro')}catch(e){}iconeTema()}
+/* ---------- cor de fundo: pessoal (navegador) > da equipe (Config) > padrão do tema ---------- */
+const FUNDOS=[['Azul claro','#DCE8F7'],['Menta','#DDF1E6'],['Lilás','#E9E2F7'],['Rosa','#F8E1EA'],['Areia','#F3EBDD'],['Cinza','#DADDE3'],
+  ['Azul-marinho','#1F3A5F'],['Verde-floresta','#1E4D3A'],['Roxo','#3B2A63'],['Vinho','#5A1F33'],['Grafite','#2B2F36'],['Preto','#111418']];
+function hexOk(c){return /^#[0-9a-f]{6}$/i.test(c||'')}
+function luminancia(hex){const n=parseInt(hex.slice(1),16),f=v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)};return .2126*f(n>>16&255)+.7152*f(n>>8&255)+.0722*f(n&255)}
+function aplicarFundo(cor){
+  if(cor===undefined){const p=lsGet('qd_fundo')||'';cor=p==='padrao'?'':p||(S.cfg&&S.cfg.fundo)||''}
+  const r=document.documentElement.style;
+  if(!hexOk(cor)){['--bg','--colbg','--bgTxt','--bgMuted'].forEach(v=>r.removeProperty(v));document.documentElement.classList.remove('fundo-escuro');return}
+  const escuro=luminancia(cor)<.18;
+  r.setProperty('--bg',cor);
+  // colunas acompanham o fundo: translúcidas sobre a cor escolhida, sempre legíveis
+  r.setProperty('--colbg',`color-mix(in srgb,var(--panel) ${escuro?'86%':'62%'},${cor})`);
+  r.setProperty('--bgTxt',escuro?'#F2F4F7':'#101828');r.setProperty('--bgMuted',escuro?'rgba(242,244,247,.75)':'#475467');
+  document.documentElement.classList.toggle('fundo-escuro',escuro);
+}
+function abrirFundo(){
+  const pessoal=lsGet('qd_fundo')||'',equipe=(S.cfg&&S.cfg.fundo)||'',atual=pessoal==='padrao'?'':pessoal||equipe;
+  S.fundoTmp=atual;
+  const sw=(nome,c)=>`<button class="sw${c===atual?' on':''}" data-c="${c}" title="${esc(nome)}" style="background:${c||'var(--panel)'}" onclick="escolherFundo('${c}')">${c?'':'<span>Padrão</span>'}</button>`;
+  modal(`<h3>🎨 Cor de fundo</h3>
+    <div class="sws">${sw('Padrão','')}${FUNDOS.map(([n,c])=>sw(n,c)).join('')}</div>
+    <div style="display:flex;align-items:center;gap:10px;margin:14px 0 4px">
+      <label style="margin:0;display:flex;align-items:center;gap:8px;cursor:pointer"><input type="color" id="fundoLivre" value="${hexOk(atual)?atual:'#DCE8F7'}" oninput="escolherFundo(this.value)" style="width:42px;height:32px;border:1px solid var(--line);border-radius:8px;padding:2px;background:var(--panel)"> Escolher outra cor</label>
+      <span class="sub" id="fundoHex">${atual||'padrão'}</span>
+    </div>
+    <p class="sub" style="margin:8px 0 14px">${pessoal?'Você está usando uma cor só sua.':equipe?'Você está usando a cor da equipe.':'Você está usando o fundo padrão.'} A cor “só para mim” fica salva neste navegador.</p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn" onclick="cancelarFundo()">Cancelar</button>
+      ${gestor()?'<button class="btn" onclick="salvarFundo(true)">👥 Para toda a equipe</button>':''}
+      <button class="btn pri" onclick="salvarFundo(false)">Só para mim</button>
+    </div>`);
+  $('modal').onclick=e=>{if(e.target.id==='modal')cancelarFundo()};
+}
+function escolherFundo(c){S.fundoTmp=c;aplicarFundo(c||'');document.querySelectorAll('.sw').forEach(b=>b.classList.toggle('on',b.dataset.c===c));
+  const h=$('fundoHex');if(h)h.textContent=c||'padrão';if(c&&$('fundoLivre'))$('fundoLivre').value=c}
+function cancelarFundo(){$('modal').onclick=null;fecharModal();aplicarFundo()}
+async function salvarFundo(equipe){
+  const c=S.fundoTmp||'';$('modal').onclick=null;
+  if(equipe){
+    try{const r=await call('configFundo',{cor:c});S.cfg.fundo=r.fundo}catch(e){toast('Não foi possível salvar: '+msgErro(e));return}
+    lsSet('qd_fundo','');fecharModal();aplicarFundo();toast(c?'🎨 Cor de fundo definida para toda a equipe':'🎨 Equipe voltou ao fundo padrão');
+  }else{
+    lsSet('qd_fundo',c===((S.cfg&&S.cfg.fundo)||'')?'':c||'padrao');fecharModal();aplicarFundo();toast(c?'🎨 Cor de fundo salva para você':'🎨 Fundo padrão');
+  }
+}
 function iconeTema(){const b=$('btnTema');if(b){const d=document.documentElement.classList.contains('dark');b.textContent=d?'☀️':'🌙';b.title=d?'Modo claro':'Modo escuro'}}
 setTimeout(iconeTema,0);
 S.pend={};
@@ -1144,7 +1198,8 @@ function mockApi(acao,p){
       if(p.campos&&p.campos.responsavel&&p.campos.responsavel!==me.nome)throw new Error('SEM_PERMISSAO: só gestores atribuem demandas a outras pessoas');}
   }
   switch(acao){
-    case 'board':return JSON.parse(JSON.stringify({config:{nome:'Sýstima (demo)',cor:'#1F3A5F',colunas:['Novo','Em produção','Revisão','Entregue'],colunaFinal:'Entregue',prioridades:['Baixa','Normal','Alta','Urgente'],agenda:true},
+    case 'configFundo':{if(me.perfil!=='Gestor')throw new Error('SEM_PERMISSAO: só gestores definem a cor de fundo da equipe');DB.fundo=p.cor||'';return {fundo:DB.fundo}}
+    case 'board':return JSON.parse(JSON.stringify({config:{nome:'Sýstima (demo)',cor:'#1F3A5F',fundo:DB.fundo||'',colunas:['Novo','Em produção','Revisão','Entregue'],colunaFinal:'Entregue',prioridades:['Baixa','Normal','Alta','Urgente'],agenda:true},
       me:{nome:me.nome,perfil:me.perfil},categorias:DB.cats,equipe:DB.equipe.map(({pin,...m})=>m),tarefas:DB.tarefas.filter(t=>p.arquivadas||t.arquivada!=='SIM').map(t=>({...t,comentarios:(DB.com[t.id]||[]).length})),recorrencias:DB.recs.map(recCli)}));
     case 'recorrenciaAlternar':{const r=DB.recs.find(x=>x.id===p.id);if(!r)throw new Error('Recorrência não encontrada');
       if(me.perfil!=='Gestor'&&r.criadoPor!==me.nome&&r.responsavel!==me.nome)throw new Error('SEM_PERMISSAO: só um gestor, quem criou ou o responsável pausa esta recorrência');

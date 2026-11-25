@@ -87,6 +87,7 @@ const CONFIG_PADRAO = [
   ['PRIORIDADES', 'Baixa | Normal | Alta | Urgente', 'Níveis de prioridade, separados por |'],
   ['PRIORIDADE_PADRAO', 'Normal', ''],
   ['COR_PRINCIPAL', '#1F3A5F', 'Cor da marca no quadro (hex)'],
+  ['COR_FUNDO', '', 'Cor de fundo do quadro para toda a equipe (hex). Vazio = padrão. Cada pessoa pode trocar a sua no botão 🎨'],
   ['EMAIL_COORDENACAO', '', 'E-mail do gestor do setor (recebe resumo de novas demandas e atrasos)'],
   ['NOTIFICAR_RESPONSAVEL', 'SIM', 'E-mail ao responsável quando recebe uma demanda'],
   ['NOTIFICAR_SOLICITANTE', 'SIM', 'E-mail ao solicitante quando o status muda (se o formulário coletar e-mail)'],
@@ -295,6 +296,14 @@ function api(acao, p, codigo) {
   if (!eu) throw new Error('LOGIN');
   if (eu.perfil === 'Leitor') throw new Error('SEM_PERMISSAO: seu perfil é de leitura');
   p.autor = eu.nome;
+  if (acao === 'configFundo') {
+    if (eu.perfil !== 'Gestor') throw new Error('SEM_PERMISSAO: só gestores definem a cor de fundo da equipe');
+    const cor = String(p.cor || '').trim();
+    if (cor && !/^#[0-9a-f]{6}$/i.test(cor)) throw new Error('Cor inválida');
+    salvarConfig_('COR_FUNDO', cor);
+    registrar_('—', eu.nome, 'Cor de fundo da equipe', cor || 'padrão');
+    return { fundo: cor };
+  }
   if (acao === 'limparQuadro') {
     if (eu.perfil !== 'Gestor') throw new Error('SEM_PERMISSAO: só gestores podem limpar o quadro');
     return limparQuadro_(p, eu);
@@ -622,7 +631,7 @@ function board_(p) {
     .map(t => { const o = toClient_(t); o.comentarios = coment[t.id] || 0; return o; });
   return {
     config: {
-      nome: c.NOME_QUADRO, cor: c.COR_PRINCIPAL || '#1F3A5F',
+      nome: c.NOME_QUADRO, cor: c.COR_PRINCIPAL || '#1F3A5F', fundo: /^#[0-9a-f]{6}$/i.test(c.COR_FUNDO || '') ? c.COR_FUNDO : '',
       colunas: lista_(c.COLUNAS), colunaFinal: c.COLUNA_FINAL,
       prioridades: lista_(c.PRIORIDADES), agenda: c.AGENDA_INTEGRAR === 'SIM',
       urlApp: ScriptApp.getService().getUrl() || ''
@@ -1632,6 +1641,17 @@ function cfg_() {
   const sh = ss_().getSheetByName(ABA.CONFIG);
   if (sh) sh.getDataRange().getDisplayValues().slice(1).forEach(r => { if (r[0]) o[r[0].trim()] = String(r[1]).trim(); });
   return (_cfgCache = o);
+}
+
+/** Grava uma chave na aba Config (cria a linha se não existir). */
+function salvarConfig_(chave, valor) {
+  const sh = ss_().getSheetByName(ABA.CONFIG);
+  const v = sh.getRange(1, 1, Math.max(sh.getLastRow(), 1), 1).getDisplayValues();
+  const i = v.findIndex(r => String(r[0]).trim() === chave);
+  const pad = CONFIG_PADRAO.find(r => r[0] === chave);
+  if (i >= 0) sh.getRange(i + 1, 2).setNumberFormat('@').setValue(valor);
+  else sh.getRange(sh.getLastRow() + 1, 1, 1, 3).setNumberFormat('@').setValues([[chave, valor, pad ? pad[2] : '']]);
+  _cfgCache = null;
 }
 
 function lerAba_(nome) {

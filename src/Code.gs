@@ -144,9 +144,13 @@ const AUTOMACOES_PADRAO = [
   ['NAO', 'Tarefa criada', '', 'Categoria', 'Vídeo', 'Adicionar etiqueta', 'audiovisual']
 ];
 
+/* Frequência: Diária | Semanal | Quinzenal (a cada 2 semanas) | Mensal | Personalizada (use "A cada (dias)").
+   Dia: dia da semana (seg, ter…) para Semanal/Quinzenal ou dia do mês (1–31) para Mensal. Vazio = usa a data de Início. */
+const CAB_RECORRENTES = ['Ativa', 'Título', 'Categoria', 'Responsável', 'Frequência', 'Dia', 'Prazo (dias)', 'Descrição', 'Última criação', 'A cada (dias)', 'Início', 'ID', 'Prioridade', 'Criado por'];
+const FREQUENCIAS = ['Diária', 'Semanal', 'Quinzenal', 'Mensal', 'Personalizada'];
 const RECORRENTES_PADRAO = [
-  ['NAO', 'Relatório semanal de redes', 'Redes sociais', '', 'Semanal', 'seg', 2, 'Métricas da semana anterior', ''],
-  ['NAO', 'Planejamento de conteúdo do mês', 'Redes sociais', '', 'Mensal', 25, 5, 'Calendário editorial do próximo mês', '']
+  ['NAO', 'Relatório semanal de redes', 'Redes sociais', '', 'Semanal', 'seg', 2, 'Métricas da semana anterior', '', '', '', '', '', ''],
+  ['NAO', 'Planejamento de conteúdo do mês', 'Redes sociais', '', 'Mensal', 25, 5, 'Calendário editorial do próximo mês', '', '', '', '', '', '']
 ];
 
 /* ============================================================
@@ -180,7 +184,7 @@ function configurarPlanilha() {
   criarAba_(ss, ABA.MAPEAMENTO, ['Campo do sistema', 'Pergunta do formulário (texto exato)', 'Dica'], MAPEAMENTO_PADRAO);
   criarAba_(ss, ABA.DESDOBRAMENTO, ['Ativa', 'Pergunta do formulário (contém)', 'Se a resposta contém (* = qualquer)', 'Gera card na categoria', 'Prazo pela pergunta', 'Dias antes'], DESDOBRAMENTO_PADRAO);
   criarAba_(ss, ABA.AUTOMACOES, ['Ativa', 'Quando', 'Valor do gatilho', 'Se campo', 'For igual a', 'Então', 'Valor da ação'], AUTOMACOES_PADRAO);
-  criarAba_(ss, ABA.RECORRENTES, ['Ativa', 'Título', 'Categoria', 'Responsável', 'Frequência', 'Dia', 'Prazo (dias)', 'Descrição', 'Última criação'], RECORRENTES_PADRAO);
+  criarAba_(ss, ABA.RECORRENTES, CAB_RECORRENTES, RECORRENTES_PADRAO);
   const t = criarAba_(ss, ABA.TAREFAS, CAMPOS.map(c => c[1]), []);
   t.getRange(1, 1, t.getMaxRows(), CAMPOS.length).setNumberFormat('@');
   criarAba_(ss, ABA.COMENTARIOS, ['ID', 'Tarefa ID', 'Autor', 'Texto', 'Data'], []);
@@ -214,10 +218,10 @@ function validacoes_(ss) {
   const eq = ss.getSheetByName(ABA.EQUIPE);
   eq.getRange('E2:E200').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Gestor', 'Membro', 'Leitor']).build());
   eq.getRange('F2:F200').setNumberFormat('@');
-  const rec = ss.getSheetByName(ABA.RECORRENTES);
-  rec.getRange('A2:A100').setDataValidation(simNao);
-  rec.getRange('E2:E100').setDataValidation(SpreadsheetApp.newDataValidation()
-    .requireValueInList(['Diária', 'Semanal', 'Mensal']).build());
+  const rec = garantirRecorrentes_();
+  rec.getRange('A2:A500').setDataValidation(simNao);
+  rec.getRange('E2:E500').setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInList(FREQUENCIAS).build());
   const map = ss.getSheetByName(ABA.MAPEAMENTO);
   const aba = abaRespostas_();
   if (aba && aba.getLastColumn() > 0) {
@@ -311,8 +315,12 @@ function api(acao, p, codigo) {
     switch (acao) {
       case 'mover': return toClient_(alterar_(p.id, { status: p.status, ordem: p.ordem }, p.autor));
       case 'atualizar': return toClient_(alterar_(p.id, p.campos || {}, p.autor));
-      case 'criar':
-        return toClient_(criarTarefa_(p.dados || {}, p.autor, 'manual'));
+      case 'criar': {
+        const d = p.dados || {};
+        if (d.recorrencia && d.recorrencia.freq) return criarComRecorrencia_(d, p.autor);
+        return toClient_(criarTarefa_(d, p.autor, 'manual'));
+      }
+      case 'recorrenciaAlternar': return alternarRecorrencia_(p.id, !!p.ativa, eu);
       case 'comentar': return comentar_(p.id, p.autor, p.texto);
       case 'timer': return toClient_(timer_(p.id, p.modo, p.autor));
       case 'tempoManual': return toClient_(tempoManual_(p.id, p.minutos, p.autor));
@@ -619,6 +627,7 @@ function board_(p) {
     categorias: categorias_(),
     equipe: equipe_().map(m => ({ nome: m.nome, funcao: m.funcao, capacidade: m.capacidade, perfil: m.perfil })),
     tarefas: tarefas,
+    recorrencias: lerRecorrentes_().map(recClient_),
     agora: agora_()
   };
 }
@@ -984,7 +993,7 @@ function criarTarefa_(d, autor, origem) {
   const efeitos = executarAutomacoes_('Tarefa criada', t, {});
   sincronizarAgenda_(t);
   inserirTarefa_(t);
-  registrar_(t.id, autor, 'Criou', `via ${origem && origem.indexOf('#') > 0 ? 'formulário' : origem || autor}`);
+  registrar_(t.id, autor, 'Criou', `via ${String(origem).indexOf('rec:') === 0 ? 'recorrência' : origem && origem.indexOf('#') > 0 ? 'formulário' : origem || autor}`);
   notificarNova_(t);
   efeitos.forEach(f => f());
   return t;
@@ -1193,29 +1202,212 @@ function verificarAtrasos_() {
   }
 }
 
-function gerarRecorrentes_() {
+/* ============================================================
+ *  DEMANDAS RECORRENTES
+ *  Cada linha da aba Recorrentes é uma regra. A rotina diária cria o card
+ *  do dia em que a regra vence. Se a rotina falhar um dia, ela recupera a
+ *  ocorrência perdida (até 31 dias) no próximo dia em que rodar.
+ * ============================================================ */
+
+function garantirRecorrentes_() {
+  const ss = ss_();
+  let sh = ss.getSheetByName(ABA.RECORRENTES);
+  if (!sh) return criarAba_(ss, ABA.RECORRENTES, CAB_RECORRENTES, []);
+  if (sh.getMaxColumns() < CAB_RECORRENTES.length) sh.insertColumnsAfter(sh.getMaxColumns(), CAB_RECORRENTES.length - sh.getMaxColumns());
+  const atual = sh.getRange(1, 1, 1, CAB_RECORRENTES.length).getDisplayValues()[0];
+  CAB_RECORRENTES.forEach((h, i) => {
+    if (!atual[i]) sh.getRange(1, i + 1).setValue(h).setFontWeight('bold').setBackground('#1F3A5F').setFontColor('#FFFFFF');
+  });
+  return sh;
+}
+
+function lerRecorrentes_() {
   const sh = ss_().getSheetByName(ABA.RECORRENTES);
-  if (!sh) return;
-  const dados = sh.getDataRange().getDisplayValues();
-  const hoje = hoje_();
-  const d = new Date();
-  const diaSemana = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'][d.getDay()];
-  for (let i = 1; i < dados.length; i++) {
-    const [ativa, titulo, categoria, responsavel, freq, dia, prazoDias, descricao, ultima] = dados[i];
-    if (ativa !== 'SIM' || !titulo || ultima === hoje) continue;
-    let gerar = false;
-    if (freq === 'Diária') gerar = true;
-    if (freq === 'Semanal') gerar = semAcento_(String(dia).toLowerCase()).slice(0, 3) === diaSemana;
-    if (freq === 'Mensal') gerar = Number(dia) === d.getDate();
-    if (!gerar) continue;
-    criarTarefa_({
-      titulo: titulo + ' — ' + Utilities.formatDate(d, tz_(), 'dd/MM'),
-      categoria: categoria, responsavel: responsavel,
-      prazo: prazoDias ? somarDias_(hoje, Number(prazoDias)) : '',
-      descricao: descricao, solicitante: 'Recorrente'
-    }, '🔁 Recorrência', 'recorrente');
-    sh.getRange(i + 1, 9).setNumberFormat('@').setValue(hoje);
+  if (!sh || sh.getLastRow() < 2) return [];
+  const larg = Math.min(sh.getLastColumn(), CAB_RECORRENTES.length);
+  return sh.getRange(2, 1, sh.getLastRow() - 1, larg).getDisplayValues().map((r, i) => {
+    while (r.length < CAB_RECORRENTES.length) r.push('');
+    return {
+      linha: i + 2, ativa: String(r[0]).trim().toUpperCase(), titulo: String(r[1]).trim(), categoria: r[2], responsavel: r[3],
+      freq: freqCanonica_(r[4]), dia: String(r[5]).trim(), prazoDias: String(r[6]).trim(), descricao: r[7],
+      ultima: r[8] ? normalizarData_(r[8]) : '', aCada: String(r[9]).trim(), inicio: r[10] ? normalizarData_(r[10]) : '',
+      id: String(r[11]).trim() || 'L' + (i + 2), prioridade: r[12], criadoPor: r[13]
+    };
+  }).filter(r => r.titulo);
+}
+
+function freqCanonica_(f) {
+  const n = norm_(f);
+  if (!n) return '';
+  if (n.indexOf('personaliz') === 0 || n.indexOf('a cada') === 0) return 'Personalizada';
+  return FREQUENCIAS.find(x => norm_(x).slice(0, 5) === n.slice(0, 5)) || '';
+}
+
+/* --- datas puras (sem fuso), no formato yyyy-MM-dd --- */
+function isoUTC_(iso) { const [a, m, d] = String(iso).slice(0, 10).split('-').map(Number); return Date.UTC(a, m - 1, d); }
+function isoMais_(iso, n) { return new Date(isoUTC_(iso) + Number(n) * 864e5).toISOString().slice(0, 10); }
+function diffDias_(a, b) { return Math.round((isoUTC_(b) - isoUTC_(a)) / 864e5); }
+function diaSemana_(iso) { return new Date(isoUTC_(iso)).getUTCDay(); }
+const DIAS_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+const DIAS_SEMANA_NOME = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+
+/** A regra gera card nesta data? */
+function recVence_(r, iso) {
+  const base = r.inicio || '';
+  if (base && iso < base) return false;
+  const wd = DIAS_SEMANA.indexOf(norm_(r.dia).slice(0, 3));
+  switch (r.freq) {
+    case 'Diária': return true;
+    case 'Semanal':
+    case 'Quinzenal': {
+      const passo = r.freq === 'Semanal' ? 7 : 14;
+      if (!base) return passo === 7 && wd >= 0 && diaSemana_(iso) === wd; // linhas antigas: só o dia da semana
+      let ancora = base;
+      if (wd >= 0) while (diaSemana_(ancora) !== wd) ancora = isoMais_(ancora, 1);
+      const df = diffDias_(ancora, iso);
+      return df >= 0 && df % passo === 0;
+    }
+    case 'Mensal': {
+      const alvo = Number(r.dia) || (base ? Number(base.slice(8, 10)) : 0);
+      if (!alvo) return false;
+      const [a, m, d] = iso.split('-').map(Number);
+      return d === Math.min(alvo, new Date(Date.UTC(a, m, 0)).getUTCDate()); // dia 31 vira o último dia do mês
+    }
+    case 'Personalizada': {
+      const n = Math.floor(Number(r.aCada));
+      if (!base || !(n >= 1)) return false;
+      return diffDias_(base, iso) % n === 0;
+    }
   }
+  return false;
+}
+
+function recProxima_(r, desde) {
+  for (let i = 0; i <= 400; i++) { const d = isoMais_(desde, i); if (recVence_(r, d)) return d; }
+  return '';
+}
+
+function recTexto_(r) {
+  const base = r.inicio || '';
+  const wdTxt = DIAS_SEMANA.indexOf(norm_(r.dia).slice(0, 3));
+  const wd = wdTxt >= 0 ? wdTxt : base ? diaSemana_(base) : -1;
+  const nomeDia = wd >= 0 ? DIAS_SEMANA_NOME[wd] : '';
+  const todo = wd === 0 || wd === 6 ? 'Todo ' : 'Toda ';
+  switch (r.freq) {
+    case 'Diária': return 'Todos os dias';
+    case 'Semanal': return nomeDia ? todo + nomeDia : 'Semanal';
+    case 'Quinzenal': return 'A cada 2 semanas' + (nomeDia ? ` (${nomeDia})` : '');
+    case 'Mensal': { const dm = Number(r.dia) || (base ? Number(base.slice(8, 10)) : 0); return dm ? `Todo dia ${dm} do mês` + (dm > 28 ? ' (ou o último dia)' : '') : 'Mensal'; }
+    case 'Personalizada': { const n = Math.floor(Number(r.aCada)); return n === 1 ? 'Todos os dias' : `A cada ${n} dias`; }
+  }
+  return r.freq || '—';
+}
+
+function recClient_(r) {
+  const hoje = hoje_();
+  let desde = r.ultima && r.ultima >= hoje ? isoMais_(r.ultima, 1) : hoje;
+  if (r.inicio && r.inicio > desde) desde = r.inicio;
+  return {
+    id: r.id, ativa: r.ativa === 'SIM', titulo: r.titulo, categoria: r.categoria, responsavel: r.responsavel,
+    freq: r.freq, dia: r.dia, aCada: r.aCada, inicio: r.inicio, ultima: r.ultima, prazoDias: r.prazoDias,
+    criadoPor: r.criadoPor, texto: recTexto_(r), proxima: r.ativa === 'SIM' ? recProxima_(r, desde) : ''
+  };
+}
+
+function novoIdRec_() { return 'R' + Utilities.formatDate(new Date(), tz_(), 'yyMMddHHmmss') + Math.floor(Math.random() * 90 + 10); }
+function ddMM_(iso) { return iso.slice(8, 10) + '/' + iso.slice(5, 7); }
+
+/** Cria a regra de recorrência e já coloca a primeira ocorrência no quadro. */
+function criarComRecorrencia_(d, autor) {
+  const rc = d.recorrencia || {};
+  const freq = freqCanonica_(rc.freq);
+  if (!freq) throw new Error('Escolha a frequência: diária, semanal, quinzenal, mensal ou personalizada');
+  const aCada = freq === 'Personalizada' ? Math.floor(Number(rc.aCada)) : '';
+  if (freq === 'Personalizada' && !(aCada >= 1 && aCada <= 365)) throw new Error('Informe de quantos em quantos dias a demanda se repete (1 a 365)');
+  if (!String(d.titulo || '').trim()) throw new Error('Dê um título para a demanda');
+  const hoje = hoje_();
+  const base = /^\d{4}-\d{2}-\d{2}$/.test(String(d.inicio || '')) ? d.inicio : hoje;
+  if (base < hoje) throw new Error('A data de início não pode ser no passado');
+  let prazoDias = '';
+  if (d.prazo) {
+    prazoDias = diffDias_(base, d.prazo);
+    if (prazoDias < 0) throw new Error('O prazo precisa ser no mesmo dia ou depois da data de início');
+  }
+  const cat = combinarCategoria_(d.categoria, categorias_());
+  const regra = {
+    ativa: 'SIM', titulo: String(d.titulo).trim(), categoria: cat ? cat.nome : (d.categoria || ''),
+    responsavel: d.responsavel || (cat ? cat.responsavel : ''), freq: freq, dia: '', prazoDias: String(prazoDias),
+    descricao: d.descricao || '', ultima: base, aCada: String(aCada), inicio: base, id: novoIdRec_(),
+    prioridade: d.prioridade || '', criadoPor: autor
+  };
+  const sh = garantirRecorrentes_();
+  sh.getRange(sh.getLastRow() + 1, 1, 1, CAB_RECORRENTES.length).setNumberFormat('@').setValues([[
+    regra.ativa, regra.titulo, regra.categoria, regra.responsavel, regra.freq, regra.dia, regra.prazoDias, regra.descricao,
+    regra.ultima, regra.aCada, regra.inicio, regra.id, regra.prioridade, regra.criadoPor
+  ]]);
+  const t = criarTarefa_(Object.assign({}, d, {
+    titulo: regra.titulo + ' — ' + ddMM_(base), inicio: base,
+    prazo: d.prazo || (cat && cat.sla ? isoMais_(base, cat.sla) : '')
+  }), autor, 'rec:' + regra.id + ':' + base);
+  registrar_(t.id, autor, 'Recorrência', recTexto_(regra));
+  const o = toClient_(t);
+  o._recorrencia = recClient_(regra);
+  return o;
+}
+
+/** Pausa ou retoma uma regra. Gestor, quem criou ou o responsável da regra podem alterar. */
+function alternarRecorrencia_(id, ativa, eu) {
+  const r = lerRecorrentes_().find(x => x.id === id);
+  if (!r) throw new Error('Recorrência não encontrada');
+  const dono = norm_(r.criadoPor) === norm_(eu.nome) || norm_(r.responsavel) === norm_(eu.nome);
+  if (eu.perfil !== 'Gestor' && !dono) throw new Error('SEM_PERMISSAO: só um gestor, quem criou ou o responsável pausa esta recorrência');
+  const sh = garantirRecorrentes_();
+  sh.getRange(r.linha, 1).setValue(ativa ? 'SIM' : 'NAO');
+  // ao retomar, não recupera as ocorrências do período pausado
+  if (ativa && (!r.ultima || r.ultima < hoje_())) sh.getRange(r.linha, 9).setNumberFormat('@').setValue(isoMais_(hoje_(), -1));
+  if (String(id).indexOf('L') === 0) sh.getRange(r.linha, 12).setNumberFormat('@').setValue(r.id = novoIdRec_());
+  r.ativa = ativa ? 'SIM' : 'NAO';
+  if (ativa && (!r.ultima || r.ultima < hoje_())) r.ultima = isoMais_(hoje_(), -1);
+  registrar_('—', eu.nome, ativa ? 'Retomou recorrência' : 'Pausou recorrência', `${r.titulo} (${recTexto_(r)})`);
+  return recClient_(r);
+}
+
+function gerarRecorrentes_() {
+  const sh = garantirRecorrentes_();
+  const regras = lerRecorrentes_();
+  if (!regras.length) return 0;
+  const hoje = hoje_();
+  const jaExiste = {};
+  lerTarefas_().forEach(t => { if (String(t.origem).indexOf('rec:') === 0) jaExiste[t.origem] = true; });
+  const cats = categorias_();
+  let n = 0;
+  regras.forEach(r => {
+    if (r.ativa !== 'SIM' || !r.freq) return;
+    // ocorrência mais recente ainda não criada: entre a última criação (ou o início) e hoje
+    let occ = '';
+    for (let k = 0; k <= 31; k++) {
+      const d = isoMais_(hoje, -k);
+      if (r.ultima && d <= r.ultima) break;
+      if (r.inicio && d < r.inicio) break;
+      if (recVence_(r, d)) { occ = d; break; }
+      if (!r.ultima && !r.inicio) break; // linha antiga sem histórico: só olha hoje
+    }
+    if (!occ) return;
+    if (r.id.indexOf('L') === 0) { r.id = novoIdRec_(); sh.getRange(r.linha, 12).setNumberFormat('@').setValue(r.id); }
+    const origem = 'rec:' + r.id + ':' + occ;
+    if (!jaExiste[origem]) {
+      const cat = combinarCategoria_(r.categoria, cats);
+      const prazo = r.prazoDias !== '' && !isNaN(Number(r.prazoDias)) ? isoMais_(occ, Number(r.prazoDias))
+        : cat && cat.sla ? isoMais_(occ, cat.sla) : '';
+      criarTarefa_({
+        titulo: r.titulo + ' — ' + ddMM_(occ), categoria: r.categoria, responsavel: r.responsavel,
+        prioridade: r.prioridade, inicio: occ, prazo: prazo, descricao: r.descricao, solicitante: 'Recorrente'
+      }, '🔁 Recorrência', origem);
+      n++;
+    }
+    sh.getRange(r.linha, 9).setNumberFormat('@').setValue(hoje);
+  });
+  return n;
 }
 
 function arquivarAntigas_() {

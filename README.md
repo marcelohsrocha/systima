@@ -24,7 +24,7 @@ As demandas chegam pelo **Google Forms**, viram cards num **Kanban**, são distr
 | **Tela de Equipe** | Adicionar, editar, remover ou reativar pessoas, gerar PIN e enviar acesso por e-mail, sem abrir a planilha |
 | **Automações** | Regras "Quando → Se → Então" (estilo Butler/ClickUp) configuradas numa aba |
 | **Modelos por categoria** | Responsável padrão, checklist e prazo (SLA) automáticos |
-| **Tarefas recorrentes** | Diária, semanal ou mensal |
+| **Demandas recorrentes** | Criadas direto no quadro: todos os dias, toda semana, a cada 2 semanas, todo mês ou a cada N dias. Pausar e retomar pelo card ou pelo painel 🔁 Recorrentes |
 | **Avisos** | Pop-up de nova demanda, e-mails (responsável, solicitante, coordenação, @menções), resumo diário às 7h e webhook (Make/Z-API para WhatsApp) |
 | **Cronômetro e estimativas** | Tempo gasto × estimado e carga semanal × capacidade de cada pessoa |
 | **Histórico, comentários, anexos e checklists** | Por card |
@@ -104,8 +104,28 @@ clasp push
 | **Mapeamento** | Qual pergunta do Forms alimenta cada campo do card |
 | **Desdobramento** | Regras para uma resposta gerar vários cards, com a categoria e o prazo de cada um |
 | **Automacoes** | Quando (tarefa criada, status mudou, responsável mudou, prazo vencido) → Se (campo = valor) → Então (mover, atribuir, prioridade, etiqueta, checklist, e-mail, webhook) |
-| **Recorrentes** | Tarefas que se criam sozinhas |
+| **Recorrentes** | Demandas que se criam sozinhas. O quadro preenche esta aba quando alguém escolhe **Repetir** em Nova demanda; também dá para cadastrar à mão |
 | Tarefas / Comentarios / Historico | Banco de dados. Não precisa editar à mão |
+
+### Demandas recorrentes
+
+Em **＋ Nova demanda**, escolha em **Repetir**:
+
+| Opção | Repete | Âncora |
+|---|---|---|
+| Todos os dias | Diariamente | — |
+| Toda semana | A cada 7 dias | Dia da semana da data de início |
+| A cada 2 semanas | A cada 14 dias | Dia da semana da data de início |
+| Todo mês | Uma vez por mês | Dia do mês da data de início (dia 31 vira o último dia em meses mais curtos) |
+| Personalizado… | A cada N dias (1 a 365) | Data de início |
+
+- A primeira demanda entra no quadro na hora. As próximas são criadas pela rotina diária das 7h, com o título "Nome — dd/MM".
+- O **prazo** informado vale para a primeira entrega; as seguintes mantêm a mesma distância entre início e prazo. Sem prazo, vale o SLA da categoria.
+- Se a rotina deixar de rodar algum dia, a ocorrência perdida mais recente é criada na próxima execução (até 31 dias para trás), sem duplicar.
+- **Pausar** não apaga nada: as demandas já criadas continuam no quadro. Ao retomar, o período pausado não é recuperado.
+- Pausam e retomam: gestores, quem criou a regra e o responsável por ela.
+
+**Colunas da aba Recorrentes:** Ativa · Título · Categoria · Responsável · Frequência (`Diária`, `Semanal`, `Quinzenal`, `Mensal`, `Personalizada`) · Dia (`seg`…`dom` ou `1`–`31`; vazio = usa o Início) · Prazo (dias) · Descrição · Última criação · A cada (dias) · Início · ID · Prioridade · Criado por. Planilhas antigas recebem as colunas novas sozinhas, e as regras que já existiam continuam funcionando.
 
 ### Perfis
 

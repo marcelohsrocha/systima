@@ -244,6 +244,15 @@ html.dark ::-webkit-scrollbar{width:10px;height:10px}
 html.dark ::-webkit-scrollbar-thumb{background:#2F3946;border-radius:6px}
 html.dark ::-webkit-scrollbar-track{background:transparent}
 .tema{font-size:15px;padding:6px 9px}
+.rep-info{background:color-mix(in srgb,var(--brand) 7%,var(--panel));border:1px solid color-mix(in srgb,var(--brand) 25%,var(--line));border-radius:8px;padding:9px 11px;font-size:13px;line-height:1.55}
+.rec-box{display:flex;flex-direction:column;gap:6px;align-items:flex-start;background:var(--sub);border-radius:8px;padding:10px 12px}
+.rec-st{font-size:11px;font-weight:600;padding:1px 7px;border-radius:5px;background:var(--line);color:var(--text2)}
+.rec-st.on{background:color-mix(in srgb,#039855 15%,var(--panel));color:#027A48}
+html.dark .rec-st.on{color:#6CE9A6}
+.rec-row{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.rec-row.off{opacity:.6}
+.rec-t{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:560px){.rec-row{flex-wrap:wrap}}
 </style>
 </head>
 <body>
@@ -260,6 +269,7 @@ html.dark ::-webkit-scrollbar-track{background:transparent}
     <button class="btn ghost hide-m" onclick="carregar(true)" title="Atualizar">⟳ Atualizar</button>
     <button class="btn hide-m" id="btnLimpar" style="display:none" onclick="abrirLimpeza()">🧹 Limpar</button>
     <button class="btn hide-m" id="btnEquipe" style="display:none" onclick="abrirEquipe()">👥 Equipe</button>
+    <button class="btn hide-m" id="btnRec" style="display:none" onclick="abrirRecorrentes()">🔁 Recorrentes</button>
     <a class="btn hide-m" id="btnTrello" style="display:none;text-decoration:none" target="_top">⇪ Importar do Trello</a>
     <button class="btn pri so-edit" onclick="abrirNova()">＋ Nova demanda</button>
     <div class="eu" onclick="menuEu()" style="cursor:pointer" title="Conta"><span id="euAv"></span><span style="display:flex;flex-direction:column;line-height:1.15"><span id="euNome" style="font-weight:500;font-size:13px">Entrar</span><span class="perf" id="euPerf"></span></span></div>
@@ -342,12 +352,13 @@ async function carregar(manual,silencioso){
   try{
     const d=await call('board',{arquivadas:S.f.arq});
     if(silencioso&&ocupado()){detectarNovas(d.tarefas,d.me);return}
-    S.cfg=d.config;S.cats=d.categorias;S.equipe=d.equipe;S.tarefas=d.tarefas;aplicarPendentes();S.me=d.me||(S.eu?{nome:S.eu,perfil:'Gestor'}:null);
+    S.cfg=d.config;S.cats=d.categorias;S.equipe=d.equipe;S.tarefas=d.tarefas;S.recs=d.recorrencias||[];aplicarPendentes();S.me=d.me||(S.eu?{nome:S.eu,perfil:'Gestor'}:null);
     if(d.me){S.eu=d.me.nome;lsSet('qd_eu',S.eu)}
     document.body.classList.toggle('leitor',perfil()==='Leitor');
     if(gestor()&&S.cfg.urlApp){$('btnTrello').href=S.cfg.urlApp+'?pagina=importar';$('btnTrello').style.display=''}else $('btnTrello').style.display='none';
     $('btnEquipe').style.display=gestor()?'':'none';
     $('btnLimpar').style.display=gestor()?'':'none';
+    $('btnRec').style.display=S.me&&(S.recs.length||perfil()!=='Leitor')?'':'none';
     document.documentElement.style.setProperty('--brand',S.cfg.cor||'#1F3A5F');
     document.getElementById('nomeQuadro').textContent=S.cfg.nome||'Quadro de Demandas';
     document.getElementById('logo').textContent=(S.cfg.nome||'Q').trim()[0].toUpperCase();
@@ -455,6 +466,7 @@ function cardHTML(t){
       ${(t.anexos||[]).length?`<span>📎 ${t.anexos.length}</span>`:''}
       ${t.timerInicio?`<span class="timer-on">● rodando</span>`:''}
       ${t.eventoId?'<span title="Na agenda">📅</span>':''}
+      ${ehRecorrente(t)?`<span title="Demanda recorrente${recDe(t)?': '+esc(recDe(t).texto):''}">🔁</span>`:''}
       <span class="r">${av(t.responsavel)}</span>
     </div>
   </div>`;
@@ -695,6 +707,7 @@ function renderDrawer(){
       <label>Etiquetas</label><input class="inp" ${dis} value="${esc(t.etiquetas)}" placeholder="separe por vírgula" onchange="salvarCampo('${t.id}','etiquetas',this.value)">
       <label>Estimativa</label><input class="inp" ${dis} type="number" min="0" step="0.5" value="${esc(t.estimativa)}" placeholder="horas" onchange="salvarCampo('${t.id}','estimativa',this.value)">
     </div>
+    ${recDrawerHTML(t)}
 
     <div class="sec"><h5>⏱ Tempo</h5><div class="time">
       <span class="big" id="tempoBig">${fmtMin(t.tempoMin)}</span>${t.estimativa?`<span class="sub">de ${t.estimativa}h estimadas</span>`:''}
@@ -778,8 +791,14 @@ function abrirNova(status){
     <div class="full"><label>Título</label><input class="inp" id="nTit" placeholder="Ex.: Arte para o lançamento de junho"></div>
     <div><label>Categoria</label><select class="inp" id="nCat" onchange="sugerirResp()"><option value="">—</option>${op(S.cats.map(c=>c.nome))}</select></div>
     <div><label>Responsável</label><select class="inp" id="nResp"><option value="">— Automático pela categoria —</option>${op(S.equipe.map(m=>m.nome))}</select></div>
-    <div><label>Prazo</label><input class="inp" type="date" id="nPrazo"></div>
+    <div><label id="nPrazoLbl">Prazo</label><input class="inp" type="date" id="nPrazo" onchange="atualizarRep()"></div>
     <div><label>Prioridade</label><select class="inp" id="nPrio">${op(S.cfg.prioridades,'Normal')}</select></div>
+    <div><label>Repetir</label><select class="inp" id="nRep" onchange="atualizarRep()">
+      <option value="">Não repete</option><option value="Diária">Todos os dias</option><option value="Semanal">Toda semana</option>
+      <option value="Quinzenal">A cada 2 semanas</option><option value="Mensal">Todo mês</option><option value="Personalizada">Personalizado…</option></select></div>
+    <div id="nIniBox" style="visibility:hidden"><label>Começa em</label><input class="inp" type="date" id="nIni" value="${hojeISO()}" min="${hojeISO()}" onchange="atualizarRep()"></div>
+    <div class="full" id="nRepNBox" style="display:none"><label>Repetir a cada</label><div style="display:flex;gap:8px;align-items:center"><input class="inp" type="number" min="1" max="365" step="1" id="nRepN" value="3" style="width:90px!important" oninput="atualizarRep()"><span>dias</span></div></div>
+    <div class="full rep-info" id="nRepInfo" style="display:none"></div>
     <div class="full"><label>Solicitante</label><input class="inp" id="nSol" placeholder="Nome ou ministério"></div>
     <div class="full"><label>Descrição / briefing</label><textarea class="inp" id="nDesc"></textarea></div>
   </div><p class="sub">Sem prazo, o sistema usa o SLA da categoria e já aplica o checklist padrão.</p>
@@ -790,11 +809,108 @@ function sugerirResp(){const c=S.cats.find(x=>x.nome===$('nCat').value);if(c&&c.
 async function criarNova(status){
   const d={titulo:$('nTit').value.trim(),categoria:$('nCat').value,responsavel:$('nResp').value,prazo:$('nPrazo').value,prioridade:$('nPrio').value,solicitante:$('nSol').value.trim(),descricao:$('nDesc').value.trim()};
   if(!d.titulo){toast('Dê um título para a demanda');return}
+  const rep=lerRepForm();
+  if(rep){
+    if(rep.erro){toast(rep.erro);return}
+    d.recorrencia={freq:rep.freq,aCada:rep.aCada};d.inicio=rep.inicio;
+  }
   if(status)d.status=status;
   fecharModal();
-  let t;try{t=await call('criar',{dados:d})}catch(e){return}
+  let t;try{t=await call('criar',{dados:d})}catch(e){toast('Não foi possível criar: '+msgErro(e));return}
   const v=lerSet('vistos');v.add(t.id);gravarSet('vistos',v);
-  t.comentarios=0;S.tarefas.push(t);render();toast('Demanda criada'+(t.eventoId?' e adicionada à agenda':''));
+  if(t._recorrencia){S.recs.push(t._recorrencia);delete t._recorrencia;$('btnRec').style.display=''}
+  t.comentarios=0;S.tarefas.push(t);render();
+  toast(rep?'🔁 Demanda recorrente criada · '+recTexto(Object.assign({inicio:rep.inicio},rep)).toLowerCase():'Demanda criada'+(t.eventoId?' e adicionada à agenda':''));
+}
+
+/* =========================================================
+ *  DEMANDAS RECORRENTES (mesma lógica do servidor)
+ * ========================================================= */
+const DSEM=['dom','seg','ter','qua','qui','sex','sab'],DSEM_NOME=['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+function semAc(s){return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').trim().toLowerCase()}
+function dSem(s){return parseISO(s).getDay()}
+function recVence(r,d){
+  const base=r.inicio||'';if(base&&d<base)return false;
+  const wd=DSEM.indexOf(semAc(r.dia).slice(0,3));
+  switch(r.freq){
+    case 'Diária':return true;
+    case 'Semanal':case 'Quinzenal':{const passo=r.freq==='Semanal'?7:14;
+      if(!base)return passo===7&&wd>=0&&dSem(d)===wd;
+      let an=base;if(wd>=0)while(dSem(an)!==wd)an=addDias(an,1);
+      const df=diasEntre(an,d);return df>=0&&df%passo===0}
+    case 'Mensal':{const alvo=Number(r.dia)||(base?Number(base.slice(8,10)):0);if(!alvo)return false;
+      const [a,m,dd]=d.split('-').map(Number);return dd===Math.min(alvo,new Date(a,m,0).getDate())}
+    case 'Personalizada':{const n=Math.floor(Number(r.aCada));if(!base||!(n>=1))return false;return diasEntre(base,d)%n===0}
+  }
+  return false;
+}
+function recProximas(r,desde,qtd){const o=[];let d=desde;for(let i=0;i<800&&o.length<qtd;i++){if(recVence(r,d))o.push(d);d=addDias(d,1)}return o}
+function recTexto(r){
+  const base=r.inicio||'',wt=DSEM.indexOf(semAc(r.dia).slice(0,3)),wd=wt>=0?wt:base?dSem(base):-1,nd=wd>=0?DSEM_NOME[wd]:'',todo=wd===0||wd===6?'Todo ':'Toda ';
+  switch(r.freq){
+    case 'Diária':return 'Todos os dias';
+    case 'Semanal':return nd?todo+nd:'Semanal';
+    case 'Quinzenal':return 'A cada 2 semanas'+(nd?` (${nd})`:'');
+    case 'Mensal':{const dm=Number(r.dia)||(base?Number(base.slice(8,10)):0);return dm?`Todo dia ${dm} do mês`+(dm>28?' (ou o último dia)':''):'Mensal'}
+    case 'Personalizada':{const n=Math.floor(Number(r.aCada));return n===1?'Todos os dias':`A cada ${n} dias`}
+  }
+  return r.freq||'—';
+}
+function ehRecorrente(t){const o=String(t.origem||'');return o.indexOf('rec:')===0||o==='recorrente'}
+function recDe(t){const o=String(t.origem||'');if(o.indexOf('rec:')!==0)return null;const id=o.split(':')[1];return (S.recs||[]).find(r=>r.id===id)||null}
+function podeRec(r){return r&&(gestor()||(S.me&&(r.criadoPor===S.me.nome||r.responsavel===S.me.nome)))&&perfil()!=='Leitor'}
+function lerRepForm(){
+  const f=$('nRep')&&$('nRep').value;if(!f)return null;
+  const inicio=$('nIni').value||hojeISO();
+  if(inicio<hojeISO())return {erro:'A data de início não pode ser no passado'};
+  const aCada=f==='Personalizada'?Math.floor(Number($('nRepN').value)):'';
+  if(f==='Personalizada'&&!(aCada>=1&&aCada<=365))return {erro:'Informe de quantos em quantos dias (1 a 365)'};
+  const prazo=$('nPrazo').value;
+  if(prazo&&prazo<inicio)return {erro:'O prazo precisa ser no mesmo dia ou depois do início'};
+  return {freq:f,aCada,inicio,prazoDias:prazo?diasEntre(inicio,prazo):''};
+}
+function atualizarRep(){
+  const f=$('nRep').value,info=$('nRepInfo');
+  $('nIniBox').style.visibility=f?'visible':'hidden';
+  $('nRepNBox').style.display=f==='Personalizada'?'':'none';
+  $('nPrazoLbl').textContent=f?'Prazo da 1ª entrega':'Prazo';
+  if(!f){info.style.display='none';return}
+  const r=lerRepForm();info.style.display='';
+  if(r.erro){info.innerHTML='⚠️ '+esc(r.erro);return}
+  const regra={freq:r.freq,aCada:r.aCada,inicio:r.inicio};
+  const prox=recProximas(regra,r.inicio,4);
+  info.innerHTML=`🔁 <b>${esc(recTexto(regra))}</b>, a partir de ${fmtBR(r.inicio)}.<br>
+    Próximas: ${prox.map(fmtD).join(' · ')}${r.prazoDias!==''?`<br>Cada uma com prazo de ${r.prazoDias===0?'entrega no mesmo dia':r.prazoDias+' dia'+(r.prazoDias===1?'':'s')+' depois de criada'}.`:''}
+    <br><span class="sub">A primeira já entra no quadro agora. As próximas aparecem sozinhas às 7h do dia.</span>`;
+}
+function recDrawerHTML(t){
+  if(!ehRecorrente(t))return '';
+  const r=recDe(t);
+  if(!r)return `<div class="sec"><h5>🔁 Recorrência</h5><div class="sub">Criada por uma regra da aba Recorrentes da planilha.</div></div>`;
+  return `<div class="sec"><h5>🔁 Recorrência</h5><div class="rec-box">
+    <div><b>${esc(r.texto)}</b> ${r.ativa?'<span class="rec-st on">ativa</span>':'<span class="rec-st">pausada</span>'}</div>
+    <div class="sub">${r.ativa&&r.proxima?'Próxima: '+fmtBR(r.proxima):'Não vai gerar novas demandas enquanto estiver pausada.'}${r.criadoPor?' · criada por '+esc(r.criadoPor):''}</div>
+    ${podeRec(r)?`<button class="btn sm" onclick="alternarRec('${esc(r.id)}',${!r.ativa})">${r.ativa?'⏸ Parar de repetir':'▶ Retomar'}</button>`:''}
+  </div></div>`;
+}
+async function alternarRec(id,ativa){
+  let nr;try{nr=await call('recorrenciaAlternar',{id,ativa})}catch(e){toast('Não foi possível alterar: '+msgErro(e));return}
+  const i=S.recs.findIndex(r=>r.id===id);if(i>=0)S.recs[i]=nr;else S.recs.push(nr);
+  toast(ativa?'▶ Recorrência retomada':'⏸ Recorrência pausada. As demandas já criadas continuam no quadro.');
+  render();if(S.aberto)renderDrawer();if($('modal').classList.contains('on')&&$('recLista'))renderRecorrentes();
+}
+function abrirRecorrentes(){modal('<div id="recLista"></div>');$('modalBox').style.width='min(720px,100%)';renderRecorrentes()}
+function renderRecorrentes(){
+  const ls=(S.recs||[]).slice().sort((a,b)=>(b.ativa-a.ativa)||String(a.proxima||'9').localeCompare(String(b.proxima||'9')));
+  $('recLista').innerHTML=`<h3>🔁 Demandas recorrentes</h3>
+    <p class="sub" style="margin:-4px 0 12px">Cada regra cria a demanda sozinha no dia certo. Para criar uma nova, use <b>＋ Nova demanda</b> e escolha em <b>Repetir</b>.</p>
+    ${ls.length?ls.map(r=>`<div class="rec-row ${r.ativa?'':'off'}">
+      <div style="flex:1;min-width:0"><div class="rec-t">${esc(r.titulo)}</div>
+        <div class="sub">${esc(r.texto)}${r.categoria?' · '+esc(r.categoria):''} · ${r.responsavel?esc(r.responsavel):'sem responsável'}</div></div>
+      <div class="sub" style="text-align:right;white-space:nowrap">${r.ativa?(r.proxima?'Próxima<br><b>'+fmtD(r.proxima)+'</b>':'—'):'<span class="rec-st">pausada</span>'}</div>
+      ${podeRec(r)?`<button class="btn sm" onclick="alternarRec('${esc(r.id)}',${!r.ativa})">${r.ativa?'⏸ Pausar':'▶ Retomar'}</button>`:''}
+    </div>`).join(''):'<div class="vazio" style="padding:24px">Nenhuma demanda recorrente ainda.</div>'}
+    <div style="text-align:right;margin-top:14px">${perfil()!=='Leitor'?'<button class="btn" onclick="fecharModal();abrirNova()">＋ Nova demanda</button> ':''}<button class="btn pri" onclick="fecharModal()">Fechar</button></div>`;
 }
 
 /* ---------- gestão da equipe (Gestor) ---------- */
@@ -998,7 +1114,12 @@ function mockSeed(){
     T('Suporte técnico: Transmissão do webinar','Suporte técnico','Em produção','Diego',d(12),'Normal','Marketing','',[{p:'Plataforma',r:'YouTube + Zoom'}],1,{estimativa:'5',timerInicio:String(Date.now()-23*60000),timerAutor:'Diego'}),
     T('Design: Convite do evento de clientes','Design','Revisão','Bruna',d(4),'Normal','Comercial','(11) 99456-7788',[{p:'Formato',r:'Convite impresso A5 + digital'}],3,{estimativa:'4',tempoMin:'180'})];
   tarefas[0].comentarios=2;tarefas[2].comentarios=1;
-  return {cats,tarefas,equipe:[{nome:'Ana',funcao:'Coordenação',capacidade:30,perfil:'Gestor',pin:'1234'},{nome:'Bruna',funcao:'Design e redes',capacidade:30,perfil:'Membro',pin:'1111'},{nome:'Carla',funcao:'Fotografia',capacidade:20,perfil:'Membro',pin:'2222'},{nome:'Diego',funcao:'Audiovisual',capacidade:30,perfil:'Membro',pin:'3333'},{nome:'Visitante',funcao:'Diretoria',capacidade:0,perfil:'Leitor',pin:'0000'}],
+  const recs=[
+    {id:'R1',ativa:true,titulo:'Relatório semanal de redes',categoria:'Redes sociais',responsavel:'Bruna',freq:'Semanal',dia:'',aCada:'',inicio:d(-7),ultima:h,prazoDias:'2',criadoPor:'Ana'},
+    {id:'R2',ativa:true,titulo:'Backup do Drive',categoria:'Suporte técnico',responsavel:'Diego',freq:'Personalizada',dia:'',aCada:'10',inicio:d(-10),ultima:h,prazoDias:'1',criadoPor:'Ana'},
+    {id:'R3',ativa:false,titulo:'Planejamento de conteúdo do mês',categoria:'Redes sociais',responsavel:'Bruna',freq:'Mensal',dia:'25',aCada:'',inicio:d(-40),ultima:d(-31),prazoDias:'5',criadoPor:'Ana'}];
+  tarefas.push(T('Relatório semanal de redes — '+h.slice(8,10)+'/'+h.slice(5,7),'Redes sociais','Novo','Bruna',d(2),'Normal','Recorrente','',[{p:'Descrição',r:'Métricas da semana anterior'}],0,{origem:'rec:R1:'+h,inicio:h}));
+  return {cats,tarefas,recs,equipe:[{nome:'Ana',funcao:'Coordenação',capacidade:30,perfil:'Gestor',pin:'1234'},{nome:'Bruna',funcao:'Design e redes',capacidade:30,perfil:'Membro',pin:'1111'},{nome:'Carla',funcao:'Fotografia',capacidade:20,perfil:'Membro',pin:'2222'},{nome:'Diego',funcao:'Audiovisual',capacidade:30,perfil:'Membro',pin:'3333'},{nome:'Visitante',funcao:'Diretoria',capacidade:0,perfil:'Leitor',pin:'0000'}],
     com:{[tarefas[0].id]:[{id:'c1',autor:'Ana',texto:'@Bruna usa a fonte do guia da marca, por favor.',data:ts(-2)},{id:'c2',autor:'Bruna',texto:'Feito! Subi a primeira versão no Drive.',data:ts(-1)}],[tarefas[2].id]:[{id:'c3',autor:'Ana',texto:'Falta só a trilha licenciada.',data:ts(-1)}]},hist:{}};
 }
 function mockApi(acao,p){
@@ -1009,6 +1130,7 @@ function mockApi(acao,p){
   if(acao==='equipeLogin')return {nome:'Sýstima (demo)',pessoas:DB.equipe.map(m=>({nome:m.nome,funcao:m.funcao}))};
   const me=DB.equipe.find(m=>m.nome===p.autor&&m.pin===p.pin);
   if(!me)throw new Error('LOGIN');
+  const recCli=r=>{const desde=r.ultima&&r.ultima>=hojeISO()?addDias(r.ultima,1):hojeISO();return {...r,texto:recTexto(r),proxima:r.ativa?(recProximas(r,r.inicio>desde?r.inicio:desde,1)[0]||''):''}};
   if(!['board','detalhes'].includes(acao)){
     if(me.perfil==='Leitor')throw new Error('SEM_PERMISSAO: seu perfil é de leitura');
     if(me.perfil==='Membro'&&['mover','atualizar','timer','tempoManual'].includes(acao)){const t=find(p.id);
@@ -1018,7 +1140,10 @@ function mockApi(acao,p){
   }
   switch(acao){
     case 'board':return JSON.parse(JSON.stringify({config:{nome:'Sýstima (demo)',cor:'#1F3A5F',colunas:['Novo','Em produção','Revisão','Entregue'],colunaFinal:'Entregue',prioridades:['Baixa','Normal','Alta','Urgente'],agenda:true},
-      me:{nome:me.nome,perfil:me.perfil},categorias:DB.cats,equipe:DB.equipe.map(({pin,...m})=>m),tarefas:DB.tarefas.filter(t=>p.arquivadas||t.arquivada!=='SIM').map(t=>({...t,comentarios:(DB.com[t.id]||[]).length}))}));
+      me:{nome:me.nome,perfil:me.perfil},categorias:DB.cats,equipe:DB.equipe.map(({pin,...m})=>m),tarefas:DB.tarefas.filter(t=>p.arquivadas||t.arquivada!=='SIM').map(t=>({...t,comentarios:(DB.com[t.id]||[]).length})),recorrencias:DB.recs.map(recCli)}));
+    case 'recorrenciaAlternar':{const r=DB.recs.find(x=>x.id===p.id);if(!r)throw new Error('Recorrência não encontrada');
+      if(me.perfil!=='Gestor'&&r.criadoPor!==me.nome&&r.responsavel!==me.nome)throw new Error('SEM_PERMISSAO: só um gestor, quem criou ou o responsável pausa esta recorrência');
+      r.ativa=!!p.ativa;if(r.ativa&&(!r.ultima||r.ultima<hojeISO()))r.ultima=addDias(hojeISO(),-1);return recCli(r)}
     case 'detalhes':return {comentarios:DB.com[p.id]||[],historico:(DB.hist[p.id]||[]).concat([{data:find(p.id).criadoEm,autor:'Formulário',acao:'Criou',detalhe:'via formulário'}])};
     case 'mover':case 'atualizar':{
       const t=find(p.id);const campos=acao==='mover'?{status:p.status,ordem:p.ordem}:p.campos;
@@ -1027,11 +1152,16 @@ function mockApi(acao,p){
       t.eventoId=t.prazo&&t.arquivada!=='SIM'?'ev':'';
       return JSON.parse(JSON.stringify(t));}
     case 'criar':{const d=p.dados;const c=DB.cats.find(x=>x.nome===d.categoria);
-      const t={id:'T'+Date.now(),criadoEm:agora(),titulo:d.titulo,categoria:d.categoria,status:d.status||'Novo',responsavel:d.responsavel||(c?c.responsavel:''),inicio:hojeISO(),
-        prazo:d.prazo||(c?addDias(hojeISO(),c.sla):''),prioridade:d.prioridade||'Normal',etiquetas:'',solicitante:d.solicitante,contato:'',emailSolicitante:'',
+      const rc=d.recorrencia,base=rc?(d.inicio||hojeISO()):hojeISO();let regra=null;
+      if(rc){if(rc.freq==='Personalizada'&&!(Number(rc.aCada)>=1))throw new Error('Informe de quantos em quantos dias');
+        regra={id:'R'+Date.now(),ativa:true,titulo:d.titulo,categoria:d.categoria,responsavel:d.responsavel||(c?c.responsavel:''),freq:rc.freq,dia:'',aCada:String(rc.aCada||''),inicio:base,ultima:base,prazoDias:d.prazo?String(diasEntre(base,d.prazo)):'',criadoPor:me.nome};
+        DB.recs.push(regra)}
+      const t={id:'T'+Date.now(),criadoEm:agora(),titulo:d.titulo+(rc?' — '+base.slice(8,10)+'/'+base.slice(5,7):''),categoria:d.categoria,status:d.status||'Novo',responsavel:d.responsavel||(c?c.responsavel:''),inicio:base,
+        prazo:d.prazo||(c?addDias(base,c.sla):''),prioridade:d.prioridade||'Normal',etiquetas:'',solicitante:d.solicitante,contato:'',emailSolicitante:'',
         briefing:d.descricao?[{p:'Descrição',r:d.descricao}]:[],anexos:[],checklist:(c?c.checklist:[]).map(x=>({id:Math.random().toString(36).slice(2,8),texto:x,feito:false})),
-        estimativa:'',tempoMin:'0',timerInicio:'',timerAutor:'',eventoId:'ev',arquivada:'NAO',concluidaEm:'',atualizadoEm:agora(),ordem:String(Date.now()),origem:'manual'};
-      DB.tarefas.push(t);log(t.id,'Criou','manual');return JSON.parse(JSON.stringify(t));}
+        estimativa:'',tempoMin:'0',timerInicio:'',timerAutor:'',eventoId:'ev',arquivada:'NAO',concluidaEm:'',atualizadoEm:agora(),ordem:String(Date.now()),origem:regra?'rec:'+regra.id+':'+base:'manual'};
+      DB.tarefas.push(t);log(t.id,'Criou',regra?'recorrência':'manual');if(regra)log(t.id,'Recorrência',recTexto(regra));
+      const o=JSON.parse(JSON.stringify(t));if(regra)o._recorrencia=recCli(regra);return o;}
     case 'comentar':{const c={id:'c'+Date.now(),autor:p.autor,texto:p.texto,data:agora()};(DB.com[p.id]=DB.com[p.id]||[]).push(c);return c}
     case 'timer':{const t=find(p.id);if(p.modo==='iniciar'){t.timerInicio=String(Date.now());log(t.id,'Timer','iniciado')}else{if(t.timerInicio){t.tempoMin=String(Number(t.tempoMin)+Math.max(1,Math.round((Date.now()-t.timerInicio)/6e4)))}t.timerInicio='';log(t.id,'Timer','parado')}return JSON.parse(JSON.stringify(t))}
     case 'tempoManual':{const t=find(p.id);t.tempoMin=String(Math.max(0,Number(t.tempoMin)+Number(p.minutos)));log(t.id,'Tempo',p.minutos+' min');return JSON.parse(JSON.stringify(t))}

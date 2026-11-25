@@ -102,7 +102,7 @@ clasp push
 | **Equipe** | Nome, e-mail, função, horas por semana, perfil, PIN, ativo e "gestor interino até" |
 | **Categorias** | Responsável padrão, cor, SLA (dias) e checklist padrão |
 | **Mapeamento** | Qual pergunta do Forms alimenta cada campo do card |
-| **Desdobramento** | Regras para uma resposta gerar vários cards, com a categoria e o prazo de cada um |
+| **Desdobramento** | Regras para uma resposta gerar vários cards, com a categoria e o prazo de cada um. No briefing de cada card, as perguntas de entregáveis mostram só as opções daquela área. A coluna opcional **Item no card** troca o texto da opção (ex.: a opção "Material gráfico (Certificados, Panfleto, Banner)" vira "Certificados" num card e "Panfleto e Banner" em outro) |
 | **Automacoes** | Quando (tarefa criada, status mudou, responsável mudou, prazo vencido) → Se (campo = valor) → Então (mover, atribuir, prioridade, etiqueta, checklist, e-mail, webhook) |
 | **Recorrentes** | Demandas que se criam sozinhas. O quadro preenche esta aba quando alguém escolhe **Repetir** em Nova demanda; também dá para cadastrar à mão |
 | Tarefas / Comentarios / Historico | Banco de dados. Não precisa editar à mão |

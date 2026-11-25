@@ -182,7 +182,8 @@ function configurarPlanilha() {
   criarAba_(ss, ABA.EQUIPE, ['Nome', 'E-mail', 'Função', 'Capacidade semanal (h)', 'Perfil (Gestor/Membro/Leitor)', 'PIN'], EQUIPE_PADRAO);
   gerarPins_();
   criarAba_(ss, ABA.MAPEAMENTO, ['Campo do sistema', 'Pergunta do formulário (texto exato)', 'Dica'], MAPEAMENTO_PADRAO);
-  criarAba_(ss, ABA.DESDOBRAMENTO, ['Ativa', 'Pergunta do formulário (contém)', 'Se a resposta contém (* = qualquer)', 'Gera card na categoria', 'Prazo pela pergunta', 'Dias antes'], DESDOBRAMENTO_PADRAO);
+  const des = criarAba_(ss, ABA.DESDOBRAMENTO, ['Ativa', 'Pergunta do formulário (contém)', 'Se a resposta contém (* = qualquer)', 'Gera card na categoria', 'Prazo pela pergunta', 'Dias antes'], DESDOBRAMENTO_PADRAO);
+  if (!des.getRange(1, 7).getDisplayValue()) des.getRange(1, 7).setValue('Item no card (opcional)').setFontWeight('bold').setBackground('#1F3A5F').setFontColor('#FFFFFF');
   criarAba_(ss, ABA.AUTOMACOES, ['Ativa', 'Quando', 'Valor do gatilho', 'Se campo', 'For igual a', 'Então', 'Valor da ação'], AUTOMACOES_PADRAO);
   criarAba_(ss, ABA.RECORRENTES, CAB_RECORRENTES, RECORRENTES_PADRAO);
   const t = criarAba_(ss, ABA.TAREFAS, CAMPOS.map(c => c[1]), []);
@@ -713,7 +714,8 @@ function desdobrar_(namedValues) {
   };
   const porCat = {};
   const entrega = {}; // perguntas de entregáveis (as que geram cards): no briefing de cada card ficam só as opções dele
-  regras.forEach(([, pergunta, contem, categoria, prazoPergunta, diasAntes]) => {
+  // 7ª coluna opcional "Item no card": troca o texto da opção marcada (ex.: "Material gráfico (Certificados, Panfleto, Banner)" → "Certificados")
+  regras.forEach(([, pergunta, contem, categoria, prazoPergunta, diasAntes, item]) => {
     const r = resp(pergunta);
     if (!r) return;
     const k = chaveDe(pergunta);
@@ -723,9 +725,10 @@ function desdobrar_(namedValues) {
     casadas.forEach(o => ent.usadas[o] = true);
     if (!casadas.length) return;
     const p = porCat[categoria] = porCat[categoria] || { categoria: categoria, itens: [], prazo: '', opcoes: {}, entrega: entrega };
-    casadas.forEach(o => { if (p.itens.indexOf(o) < 0) p.itens.push(o); });
+    const itens = String(item || '').trim() ? [String(item).trim()] : casadas;
+    itens.forEach(o => { if (p.itens.indexOf(o) < 0) p.itens.push(o); });
     const op = p.opcoes[k] = p.opcoes[k] || [];
-    casadas.forEach(o => { if (op.indexOf(o) < 0) op.push(o); });
+    itens.forEach(o => { if (op.indexOf(o) < 0) op.push(o); });
     const base = prazoPergunta ? normalizarData_(resp(prazoPergunta)) : '';
     if (base) {
       const pz = somarDias_(base, -Number(diasAntes || 0));

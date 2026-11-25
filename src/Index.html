@@ -253,6 +253,35 @@ html.dark .rec-st.on{color:#6CE9A6}
 .rec-row.off{opacity:.6}
 .rec-t{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:560px){.rec-row{flex-wrap:wrap}}
+.docs{padding:18px;max-width:1200px;margin:0 auto}
+.docs-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;background:var(--panel);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow)}
+.docs-pasta{margin:18px 0 8px;font-size:14px;color:var(--bgTxt,var(--text2));display:flex;gap:6px;align-items:baseline}
+.docs-pasta .sub{color:var(--bgMuted,var(--muted))}
+.docs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.doc{background:var(--panel);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:6px;border:1px solid var(--line)}
+.doc-a{display:flex;gap:10px;align-items:center;text-decoration:none;color:inherit}
+.doc-a:hover .doc-t{color:var(--brandTxt);text-decoration:underline}
+.doc-ic{font-size:24px;width:40px;height:40px;display:grid;place-items:center;background:var(--sub);border-radius:10px;flex-shrink:0}
+.doc-t{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-d{font-size:13px;color:var(--text2);line-height:1.4}
+.doc-f{display:flex;align-items:center;margin-top:auto}
+.chat-badge{position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;border-radius:10px;font-size:11px;font-weight:700;min-width:18px;height:18px;padding:0 5px;display:grid;place-items:center}
+.chat{position:fixed;top:0;right:0;bottom:0;width:min(400px,100%);background:var(--panel);z-index:22;transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column;box-shadow:-8px 0 24px rgba(16,24,40,.14);border-left:1px solid var(--line)}
+.chat.on{transform:none}
+.chat-h{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.chat-msgs{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:2px;background:var(--hover)}
+.chat-dia{align-self:center;font-size:11px;color:var(--muted);background:var(--sub);border-radius:10px;padding:2px 10px;margin:10px 0 6px}
+.cm{display:flex;gap:8px;max-width:88%;margin-top:6px}
+.cm.cont{margin-top:0}.cm.cont .av-sp{visibility:hidden}
+.cm .bal{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 10px;white-space:pre-wrap;word-break:break-word;line-height:1.4}
+.cm .who{font-size:12px;font-weight:600;margin-bottom:2px}.cm .hr{font-size:10px;color:var(--soft);margin-left:6px;font-weight:400}
+.cm.eu{align-self:flex-end;flex-direction:row-reverse}
+.cm.eu .bal{background:var(--brand);border-color:var(--brand);color:#fff}.cm.eu .bal a{color:#fff}.cm.eu .hr{color:rgba(255,255,255,.7)}
+.cm .men{font-weight:600;color:var(--blue)}.cm.eu .men{color:#fff;text-decoration:underline}
+.chat-f{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line);align-items:flex-end}
+.chat-f textarea{flex:1;resize:none;max-height:120px;min-height:38px}
+.tg{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line);cursor:pointer}
+.tg input{width:18px;height:18px;margin-top:2px;accent-color:var(--brand);flex-shrink:0}
 .sws{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:8px}
 .sw{height:40px;border-radius:9px;border:1px solid var(--line);position:relative;padding:0;font-size:11px;color:var(--muted)}
 .sw:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
@@ -280,6 +309,7 @@ html.fundo-foto .wl,html.fundo-foto .cal-side{backdrop-filter:blur(8px)}
     <button class="btn hide-m" id="btnLimpar" style="display:none" onclick="abrirLimpeza()">🧹 Limpar</button>
     <button class="btn hide-m" id="btnEquipe" style="display:none" onclick="abrirEquipe()">👥 Equipe</button>
     <button class="btn hide-m" id="btnRec" style="display:none" onclick="abrirRecorrentes()">🔁 Recorrentes</button>
+    <button class="btn" id="btnChat" style="display:none;position:relative" onclick="abrirChat()" title="Chat da equipe">💬<span class="hide-m"> Chat</span><span class="chat-badge" id="chatBadge" hidden></span></button>
     <a class="btn hide-m" id="btnTrello" style="display:none;text-decoration:none" target="_top">⇪ Importar do Trello</a>
     <button class="btn pri so-edit" onclick="abrirNova()">＋ Nova demanda</button>
     <div class="eu" onclick="menuEu()" style="cursor:pointer" title="Conta"><span id="euAv"></span><span style="display:flex;flex-direction:column;line-height:1.15"><span id="euNome" style="font-weight:500;font-size:13px">Entrar</span><span class="perf" id="euPerf"></span></span></div>
@@ -299,6 +329,11 @@ html.fundo-foto .wl,html.fundo-foto .cal-side{backdrop-filter:blur(8px)}
 
 <div class="ov" id="ov" onclick="fecharDrawer()"></div>
 <aside class="drawer" id="drawer"></aside>
+<aside class="chat" id="chat">
+  <div class="chat-h"><b>💬 Chat da equipe</b><span class="sub" id="chatSub"></span><button class="btn ghost sm" style="margin-left:auto" onclick="fecharChat()">✕</button></div>
+  <div class="chat-msgs" id="chatMsgs"><div class="vazio">Carregando…</div></div>
+  <div class="chat-f"><textarea class="inp" id="chatTxt" rows="1" placeholder="Mensagem… (@nome avisa a pessoa)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();enviarChat()}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea><button class="btn pri" onclick="enviarChat()">Enviar</button></div>
+</aside>
 <div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
 <div class="toast" id="toast"></div>
 <div id="cfgExec" data-h="<?= (ScriptApp.getService().getUrl() || '').substring(8) ?>" hidden></div>
@@ -317,7 +352,7 @@ const S = {
 };
 function mostrarErro(m){try{const el=document.getElementById('main');if(el&&!S.cfg)el.innerHTML='<div class="vazio" style="color:#B42318">⚠️ '+String(m).replace(/[<>&]/g,'')+'</div>';toast('⚠️ '+m)}catch(e){}}
 window.addEventListener('error',e=>mostrarErro('Erro no quadro: '+e.message));
-const VIEWS = [['kanban','▦ Quadro'],['lista','☰ Lista'],['cal','📅 Calendário'],['tl','▬ Linha do tempo'],['carga','⚖ Carga de trabalho'],['dash','📊 Dashboard']];
+const VIEWS = [['kanban','▦ Quadro'],['lista','☰ Lista'],['cal','📅 Calendário'],['tl','▬ Linha do tempo'],['carga','⚖ Carga de trabalho'],['dash','📊 Dashboard'],['docs','📁 Documentos']];
 
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
@@ -362,13 +397,14 @@ async function carregar(manual,silencioso){
   try{
     const d=await call('board',{arquivadas:S.f.arq});
     if(silencioso&&ocupado()){detectarNovas(d.tarefas,d.me);return}
-    S.cfg=d.config;S.cats=d.categorias;S.equipe=d.equipe;S.tarefas=d.tarefas;S.recs=d.recorrencias||[];aplicarPendentes();S.me=d.me||(S.eu?{nome:S.eu,perfil:'Gestor'}:null);
+    S.cfg=d.config;S.cats=d.categorias;S.equipe=d.equipe;S.tarefas=d.tarefas;S.recs=d.recorrencias||[];S.chatInfo=d.chat||{total:0};S.docs=d.documentos||[];aplicarPendentes();S.me=d.me||(S.eu?{nome:S.eu,perfil:'Gestor'}:null);
     if(d.me){S.eu=d.me.nome;lsSet('qd_eu',S.eu)}
     document.body.classList.toggle('leitor',perfil()==='Leitor');
     if(gestor()&&S.cfg.urlApp){$('btnTrello').href=S.cfg.urlApp+'?pagina=importar';$('btnTrello').style.display=''}else $('btnTrello').style.display='none';
     $('btnEquipe').style.display=gestor()?'':'none';
     $('btnLimpar').style.display=gestor()?'':'none';
     $('btnRec').style.display=S.me&&(S.recs.length||perfil()!=='Leitor')?'':'none';
+    $('btnChat').style.display=S.me?'':'none';badgeChat();
     document.documentElement.style.setProperty('--brand',S.cfg.cor||'#1F3A5F');
     aplicarFundo();
     document.getElementById('nomeQuadro').textContent=S.cfg.nome||'Quadro de Demandas';
@@ -455,7 +491,8 @@ function render(){
   const atras=abertas.filter(t=>situacaoPrazo(t)==='late').length;
   $('resumo').textContent=`${abertas.length} em aberto · ${atras} atrasada${atras===1?'':'s'}${S.cfg.agenda?' · sincronizado com Google Agenda':''}`;
   const m=$('main');
-  ({kanban:renderKanban,lista:renderLista,cal:renderCal,tl:renderTL,carga:renderCarga,dash:renderDash}[S.view]||renderKanban)(m,ts);
+  document.querySelector('.filtros').style.display=S.view==='docs'?'none':'';
+  ({kanban:renderKanban,lista:renderLista,cal:renderCal,tl:renderTL,carga:renderCarga,dash:renderDash,docs:renderDocs}[S.view]||renderKanban)(m,ts);
 }
 
 /* ---------- Kanban ---------- */
@@ -631,6 +668,56 @@ function renderCarga(m,ts){
 }
 
 /* ---------- Dashboard ---------- */
+/* ---------- Documentos ---------- */
+function tipoDoc(u){u=String(u||'').toLowerCase();
+  if(/docs\.google\.com\/document/.test(u))return ['📄','Documento'];if(/docs\.google\.com\/spreadsheets/.test(u))return ['📊','Planilha'];
+  if(/docs\.google\.com\/presentation/.test(u))return ['📽️','Apresentação'];if(/docs\.google\.com\/forms|forms\.gle/.test(u))return ['📝','Formulário'];
+  if(/drive\.google\.com\/drive\/(u\/\d+\/)?folders/.test(u))return ['📁','Pasta do Drive'];if(/\.pdf(\?|$)/.test(u))return ['📕','PDF'];
+  if(/canva\.(com|link)/.test(u))return ['🎨','Canva'];if(/youtu\.?be/.test(u))return ['▶️','Vídeo'];if(/drive\.google\.com/.test(u))return ['🗂️','Arquivo no Drive'];
+  if(/figma\.com/.test(u))return ['✏️','Figma'];return ['🔗','Link']}
+function podeDoc(d){return perfil()!=='Leitor'&&(gestor()||(S.me&&d.autor===S.me.nome))}
+function renderDocs(m){
+  const q=(S.docQ||'').trim().toLowerCase();
+  const ls=(S.docs||[]).filter(d=>!q||[d.titulo,d.descricao,d.pasta,d.autor].join(' ').toLowerCase().includes(q));
+  const pastas=[...new Set(ls.map(d=>d.pasta||'Geral'))].sort((a,b)=>a==='Geral'?-1:b==='Geral'?1:a.localeCompare(b,'pt'));
+  m.innerHTML=`<div class="docs">
+    <div class="docs-top"><div><h2 style="margin:0">📁 Documentos da equipe</h2><div class="sub">Modelos, organograma e arquivos importantes da área, sempre à mão.</div></div><div class="sp"></div>
+      <input class="inp" style="width:240px" placeholder="🔍 Buscar documento…" value="${esc(S.docQ||'')}" oninput="S.docQ=this.value;renderDocs($('main'));const i=$('main').querySelector('input');i.focus();i.setSelectionRange(this.value.length,this.value.length)">
+      ${perfil()!=='Leitor'?'<button class="btn pri" onclick="abrirDoc()">＋ Adicionar documento</button>':''}</div>
+    ${!ls.length?`<div class="vazio" style="background:var(--panel);border-radius:12px">${q?'Nada encontrado.':'Nenhum documento ainda.'+(perfil()!=='Leitor'?' Adicione o primeiro: um modelo de roteiro, o organograma, o manual da marca…':'')}</div>`:''}
+    ${pastas.map(p=>`<section><h4 class="docs-pasta">${esc(p)} <span class="sub">${ls.filter(d=>(d.pasta||'Geral')===p).length}</span></h4><div class="docs-grid">
+      ${ls.filter(d=>(d.pasta||'Geral')===p).map(d=>{const [ic,tp]=tipoDoc(d.link);return `<div class="doc">
+        <a class="doc-a" href="${esc(d.link)}" target="_blank" rel="noopener"><span class="doc-ic">${ic}</span><span style="min-width:0"><b class="doc-t">${esc(d.titulo)}</b><span class="sub">${tp}</span></span></a>
+        ${d.descricao?`<div class="doc-d">${esc(d.descricao)}</div>`:''}
+        <div class="doc-f"><span class="sub">${esc(d.autor||'')}${d.data?' · '+fmtBR(String(d.data).slice(0,10)):''}</span>${podeDoc(d)?`<span style="margin-left:auto;display:flex;gap:4px"><button class="btn ghost sm" title="Editar" onclick="abrirDoc('${esc(d.id)}')">✏️</button><button class="btn ghost sm" title="Remover" onclick="excluirDoc('${esc(d.id)}')">🗑️</button></span>`:''}</div>
+      </div>`}).join('')}</div></section>`).join('')}
+  </div>`;
+}
+function abrirDoc(id){
+  const d=(S.docs||[]).find(x=>x.id===id)||{};
+  const pastas=[...new Set((S.docs||[]).map(x=>x.pasta).filter(Boolean).concat(['Geral','Modelos','Organização','Marca e identidade']))];
+  modal(`<h3>${id?'✏️ Editar documento':'＋ Adicionar documento'}</h3><div class="fgrid">
+    <div class="full"><label>Nome</label><input class="inp" id="dTit" value="${esc(d.titulo||'')}" placeholder="Ex.: Modelo de roteiro de vídeo"></div>
+    <div class="full"><label>Link</label><input class="inp" id="dLink" value="${esc(d.link||'')}" placeholder="https://docs.google.com/…"></div>
+    <div class="full"><label>Pasta</label><input class="inp" id="dPasta" list="dPastas" value="${esc(d.pasta||'Geral')}"><datalist id="dPastas">${pastas.map(p=>`<option value="${esc(p)}">`).join('')}</datalist></div>
+    <div class="full"><label>Descrição (opcional)</label><textarea class="inp" id="dDesc" placeholder="Para que serve, quando usar…">${esc(d.descricao||'')}</textarea></div>
+  </div><p class="sub">Arquivos do Drive precisam estar compartilhados com a equipe (ou “Qualquer pessoa com o link”) para todos conseguirem abrir.</p>
+  <div style="text-align:right;margin-top:10px"><button class="btn" onclick="fecharModal()">Cancelar</button> <button class="btn pri" onclick="salvarDoc('${esc(id||'')}')">Salvar</button></div>`);
+  setTimeout(()=>$('dTit').focus(),50);
+}
+async function salvarDoc(id){
+  const p={id:id||'',titulo:$('dTit').value.trim(),link:$('dLink').value.trim(),pasta:$('dPasta').value.trim(),descricao:$('dDesc').value.trim()};
+  if(!p.titulo){toast('Dê um nome ao documento');return}
+  if(!/^https:\/\/\S+$/i.test(p.link)){toast('O link precisa começar com https://');return}
+  try{S.docs=await call('docSalvar',p);fecharModal();renderDocs($('main'));toast(id?'Documento atualizado':'📁 Documento adicionado')}catch(e){toast('Não foi possível salvar: '+msgErro(e))}
+}
+async function excluirDoc(id){
+  const d=(S.docs||[]).find(x=>x.id===id);if(!d)return;
+  modal(`<h3>Remover documento?</h3><p>“${esc(d.titulo)}” sai da lista da equipe. O arquivo em si (no Drive, Canva…) não é apagado.</p>
+    <div style="text-align:right;margin-top:14px"><button class="btn" onclick="fecharModal()">Cancelar</button> <button class="btn pri" style="background:var(--red);border-color:var(--red)" onclick="confirmarExcluirDoc('${esc(id)}')">Remover</button></div>`);
+}
+async function confirmarExcluirDoc(id){try{S.docs=await call('docExcluir',{id});fecharModal();renderDocs($('main'));toast('Documento removido da lista')}catch(e){toast('Não foi possível remover: '+msgErro(e))}}
+
 function renderDash(m,ts){
   const hoje=hojeISO();const d30=addDias(hoje,-30);
   const abertas=ts.filter(t=>!concluida(t));
@@ -1128,9 +1215,65 @@ function entrar(){S.eu=$('lNome').value;S.pin=$('lPin').value.trim();lsSet('qd_e
 function sair(){S.eu='';S.pin='';S.me=null;lsSet('qd_eu','');lsSet('qd_pin','');fecharModal();login()}
 function menuEu(){
   if(!S.me){login();return}
+  const semEmail=S.me.email===false;
   modal(`<h3>${av(S.me.nome,1)} ${esc(S.me.nome)}</h3><p class="sub">Perfil: <b>${esc(S.me.perfil)}</b>${S.me.interinoAte?' (interino até '+fmtBR(S.me.interinoAte)+')':''}. ${S.me.perfil==='Gestor'?'Acesso total.':S.me.perfil==='Membro'?'Você cria demandas para qualquer pessoa, move e edita as suas (e as sem responsável), pode repassá-las e comenta em todas.':'Você só visualiza.'}</p>
+  <h5 style="margin:16px 0 4px">📧 E-mails que você recebe</h5>
+  ${semEmail?'<p class="sub" style="color:var(--amber)">Seu e-mail não está cadastrado na aba Equipe, então você não recebe nenhum e-mail. Peça a um gestor para cadastrar.</p>':''}
+  <label class="tg"><input type="checkbox" ${S.me.avisos!==false?'checked':''} onchange="salvarPref('avisos',this.checked)"><span><b>Aviso a cada demanda</b><br><span class="sub">Nova demanda para você, comentários, menções e prazo vencendo.</span></span></label>
+  <label class="tg"><input type="checkbox" ${S.me.resumo!==false?'checked':''} onchange="salvarPref('resumo',this.checked)"><span><b>Resumo semanal</b><br><span class="sub">Toda segunda de manhã: o que está em atraso, muito perto do prazo, precisa de atenção e está no prazo.</span></span></label>
   <div style="text-align:right;margin-top:14px"><button class="btn" onclick="fecharModal()">Fechar</button> <button class="btn" onclick="sair()">Sair / trocar de pessoa</button></div>`);
 }
+async function salvarPref(k,v){
+  try{const r=await call('preferencias',{[k]:v});S.me.avisos=r.avisos;S.me.resumo=r.resumo;
+    toast(k==='avisos'?(v?'📧 Avisos por e-mail ligados':'🔕 Avisos por e-mail desligados'):(v?'📅 Resumo semanal ligado':'📅 Resumo semanal desligado'))}
+  catch(e){toast('Não foi possível salvar: '+msgErro(e));menuEu()}
+}
+
+/* =========================================================
+ *  CHAT DA EQUIPE
+ * ========================================================= */
+function chaveLido(){return 'qd_chat_lido_'+((S.me&&S.me.nome)||'')}
+function badgeChat(){const b=$('chatBadge');if(!b)return;const tot=(S.chatInfo&&S.chatInfo.total)||0;if(lsGet(chaveLido())===null)lsSet(chaveLido(),String(tot));const lido=Number(lsGet(chaveLido())||0);
+  const n=$('chat').classList.contains('on')?0:Math.max(0,tot-lido);b.hidden=!n;b.textContent=n>99?'99+':n;
+  if(n&&S.chatInfo.ultimo&&S.chatInfo.ultimo.autor!==(S.me&&S.me.nome)&&S.chatAvisado!==tot&&S.chatAvisado!==undefined)toast('💬 '+S.chatInfo.ultimo.autor+': '+S.chatInfo.ultimo.texto);
+  S.chatAvisado=tot}
+async function abrirChat(){
+  $('chat').classList.add('on');$('chatBadge').hidden=true;
+  if(!S.chatMsgs){S.chatMsgs=[];S.chatN=0}
+  await puxarChat(true);setTimeout(()=>$('chatTxt').focus(),80);
+  clearInterval(S.chatTimer);S.chatTimer=setInterval(()=>{if(!document.hidden)puxarChat()},6000);
+}
+function fecharChat(){$('chat').classList.remove('on');clearInterval(S.chatTimer);badgeChat()}
+async function puxarChat(primeira){
+  let r;try{r=await call('chatListar',{desde:S.chatN||0})}catch(e){if(primeira)$('chatMsgs').innerHTML='<div class="vazio">Não foi possível carregar o chat.</div>';return}
+  if(r.msgs.length||primeira){S.chatMsgs=S.chatMsgs.concat(r.msgs).slice(-300);S.chatN=r.total;renderChat(true)}
+  S.chatN=r.total;S.chatInfo={total:r.total,ultimo:S.chatInfo&&S.chatInfo.ultimo};lsSet(chaveLido(),String(r.total));
+}
+function renderChat(rolar){
+  const box=$('chatMsgs'),noFim=box.scrollHeight-box.scrollTop-box.clientHeight<80;
+  if(!S.chatMsgs.length){box.innerHTML='<div class="vazio">Nenhuma mensagem ainda. Diga um oi para a equipe! 👋</div>';return}
+  const hoje=hojeISO();let dia='',ant='',h='';
+  const nomes=(S.equipe||[]).map(p=>p.nome.split(' ')[0]).filter(Boolean);
+  const reMen=nomes.length?new RegExp('@('+nomes.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')','gi'):null;
+  S.chatMsgs.forEach(m=>{
+    const d=String(m.data).slice(0,10);
+    if(d!==dia){dia=d;ant='';h+=`<div class="chat-dia">${d===hoje?'Hoje':d===addDias(hoje,-1)?'Ontem':fmtBR(d)}</div>`}
+    const eu=S.me&&m.autor===S.me.nome,cont=m.autor===ant;ant=m.autor;
+    let txt=esc(m.texto).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>');
+    if(reMen)txt=txt.replace(reMen,'<span class="men">$&</span>');
+    h+=`<div class="cm${eu?' eu':''}${cont?' cont':''}">${eu?'':`<span class="av-sp">${av(m.autor)}</span>`}<div class="bal">${!eu&&!cont?`<div class="who">${esc(m.autor)}</div>`:''}${txt}<span class="hr">${String(m.data).slice(11,16)}</span></div></div>`;
+  });
+  box.innerHTML=h;if(rolar===true&&(noFim||S.chatPrimeiro!==false)){box.scrollTop=box.scrollHeight;S.chatPrimeiro=false}
+}
+async function enviarChat(){
+  const el=$('chatTxt'),t=el.value.trim();if(!t)return;
+  el.value='';el.style.height='auto';
+  const tmp={n:-1,data:agoraLocal(),autor:S.me.nome,texto:t};S.chatMsgs.push(tmp);renderChat(true);$('chatMsgs').scrollTop=1e9;
+  try{const r=await call('chatEnviar',{texto:t,desde:S.chatN||0});S.chatMsgs=S.chatMsgs.filter(m=>m!==tmp);
+    const vistos=new Set(S.chatMsgs.map(m=>m.n));S.chatMsgs=S.chatMsgs.concat(r.msgs.filter(m=>!vistos.has(m.n)));S.chatN=r.total;lsSet(chaveLido(),String(r.total));renderChat(true);$('chatMsgs').scrollTop=1e9}
+  catch(e){S.chatMsgs=S.chatMsgs.filter(m=>m!==tmp);renderChat();el.value=t;toast('Mensagem não enviada: '+msgErro(e))}
+}
+function agoraLocal(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`}
 function escolherEu(){login()}
 function atualizarEu(){$('euAv').innerHTML=av(S.me&&S.me.nome);$('euNome').textContent=S.me?S.me.nome:'Entrar';$('euPerf').textContent=S.me?(S.me.interinoAte?'Gestor interino':S.me.perfil):''}
 function pedirCodigo(){
@@ -1243,6 +1386,15 @@ function mockApi(acao,p){
   const me=DB.equipe.find(m=>m.nome===p.autor&&m.pin===p.pin);
   if(!me)throw new Error('LOGIN');
   const recCli=r=>{const desde=r.ultima&&r.ultima>=hojeISO()?addDias(r.ultima,1):hojeISO();return {...r,texto:recTexto(r),proxima:r.ativa?(recProximas(r,r.inicio>desde?r.inicio:desde,1)[0]||''):''}};
+  DB.chat=DB.chat||[{data:addDias(hojeISO(),-1)+' 17:42',autor:'Bruna',texto:'Pessoal, subi as artes do webinar na pasta de entregas 👍'},{data:hojeISO()+' 08:15',autor:'Ana',texto:'Bom dia! @Carla consegue cobrir o workshop na quinta?'},{data:hojeISO()+' 08:31',autor:'Carla',texto:'Consigo sim, já reservei a câmera.'}];
+  DB.docs=DB.docs||[{id:'d1',titulo:'Organograma da equipe',link:'https://docs.google.com/presentation/d/exemplo',pasta:'Organização',descricao:'Quem faz o quê e quem substitui quem.',autor:'Ana',data:hojeISO()},
+    {id:'d2',titulo:'Modelo de roteiro de vídeo',link:'https://docs.google.com/document/d/exemplo',pasta:'Modelos',descricao:'Use para VTs e vídeos de redes: abertura, mensagem, chamada.',autor:'Diego',data:hojeISO()},
+    {id:'d3',titulo:'Manual da marca',link:'https://exemplo.com/manual.pdf',pasta:'Marca e identidade',descricao:'Cores, fontes e uso do logo.',autor:'Ana',data:hojeISO()},
+    {id:'d4',titulo:'Templates de posts',link:'https://www.canva.com/design/exemplo',pasta:'Modelos',descricao:'',autor:'Bruna',data:hojeISO()}];
+  const chatL=d=>{const ini=Math.max(Number(d)||0,DB.chat.length-200);return {total:DB.chat.length,msgs:DB.chat.slice(ini).map((m,i)=>({...m,n:ini+i+1,id:'m'+(ini+i)}))}};
+  if(acao==='chatListar')return JSON.parse(JSON.stringify(chatL(p.desde)));
+  if(acao==='chatEnviar'){const t=String(p.texto||'').trim();if(!t)throw new Error('Mensagem vazia');DB.chat.push({data:agora(),autor:me.nome,texto:t});return JSON.parse(JSON.stringify(chatL(p.desde)))}
+  if(acao==='preferencias'){if('avisos' in p)me.avisos=!!p.avisos;if('resumo' in p)me.resumo=!!p.resumo;return {avisos:me.avisos!==false,resumo:me.resumo!==false}}
   if(!['board','detalhes'].includes(acao)){
     if(me.perfil==='Leitor')throw new Error('SEM_PERMISSAO: seu perfil é de leitura');
     if(me.perfil==='Membro'&&['mover','atualizar','timer','tempoManual'].includes(acao)){const t=find(p.id);
@@ -1253,7 +1405,12 @@ function mockApi(acao,p){
   switch(acao){
     case 'configFundo':{if(me.perfil!=='Gestor')throw new Error('SEM_PERMISSAO: só gestores definem a cor de fundo da equipe');DB.fundo=p.cor||'';return {fundo:DB.fundo}}
     case 'board':return JSON.parse(JSON.stringify({config:{nome:'Sýstima (demo)',cor:'#1F3A5F',fundo:DB.fundo||'',colunas:['Novo','Em produção','Revisão','Entregue'],colunaFinal:'Entregue',prioridades:['Baixa','Normal','Alta','Urgente'],agenda:true},
-      me:{nome:me.nome,perfil:me.perfil},categorias:DB.cats,equipe:DB.equipe.map(({pin,...m})=>m),tarefas:DB.tarefas.filter(t=>p.arquivadas||t.arquivada!=='SIM').map(t=>({...t,comentarios:(DB.com[t.id]||[]).length})),recorrencias:DB.recs.map(recCli)}));
+      me:{nome:me.nome,perfil:me.perfil,avisos:me.avisos!==false,resumo:me.resumo!==false,email:true},categorias:DB.cats,equipe:DB.equipe.map(({pin,...m})=>m),tarefas:DB.tarefas.filter(t=>p.arquivadas||t.arquivada!=='SIM').map(t=>({...t,comentarios:(DB.com[t.id]||[]).length})),recorrencias:DB.recs.map(recCli),
+      chat:{total:DB.chat.length,ultimo:DB.chat.length?{...DB.chat[DB.chat.length-1]}:null},documentos:DB.docs}));
+    case 'docSalvar':{if(!p.titulo||!/^https:\/\//.test(p.link))throw new Error('Nome e link https:// são obrigatórios');
+      if(p.id){const d=DB.docs.find(x=>x.id===p.id);if(me.perfil!=='Gestor'&&d.autor!==me.nome)throw new Error('SEM_PERMISSAO: só um gestor ou quem adicionou pode editar');Object.assign(d,{titulo:p.titulo,link:p.link,pasta:p.pasta||'Geral',descricao:p.descricao})}
+      else DB.docs.push({id:'d'+Date.now(),titulo:p.titulo,link:p.link,pasta:p.pasta||'Geral',descricao:p.descricao,autor:me.nome,data:agora()});return JSON.parse(JSON.stringify(DB.docs))}
+    case 'docExcluir':{const d=DB.docs.find(x=>x.id===p.id);if(me.perfil!=='Gestor'&&d.autor!==me.nome)throw new Error('SEM_PERMISSAO: só um gestor ou quem adicionou pode remover');DB.docs=DB.docs.filter(x=>x!==d);return JSON.parse(JSON.stringify(DB.docs))}
     case 'recorrenciaAlternar':{const r=DB.recs.find(x=>x.id===p.id);if(!r)throw new Error('Recorrência não encontrada');
       if(me.perfil!=='Gestor'&&r.criadoPor!==me.nome&&r.responsavel!==me.nome)throw new Error('SEM_PERMISSAO: só um gestor, quem criou ou o responsável pausa esta recorrência');
       r.ativa=!!p.ativa;if(r.ativa&&(!r.ultima||r.ultima<hojeISO()))r.ultima=addDias(hojeISO(),-1);return recCli(r)}

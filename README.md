@@ -26,6 +26,10 @@ As demandas chegam pelo **Google Forms**, viram cards num **Kanban**, são distr
 | **Modelos por categoria** | Responsável padrão, checklist e prazo (SLA) automáticos |
 | **Demandas recorrentes** | Criadas direto no quadro: todos os dias, toda semana, a cada 2 semanas, todo mês ou a cada N dias. Pausar e retomar pelo card ou pelo painel 🔁 Recorrentes |
 | **Fundo do quadro** | Botão 🎨: cores prontas, qualquer cor ou foto (enviada do computador, fica só no navegador; ou link de imagem, inclusive do Drive). Cada pessoa escolhe a sua (fica no navegador); o gestor pode definir uma para a equipe toda (chave `COR_FUNDO` na aba Config, cor ou link de imagem). As colunas se ajustam à cor para continuar legíveis |
+| **Chat da equipe** | Botão 💬 no topo: conversa geral da equipe, com aviso de mensagens novas e @nome para avisar alguém por e-mail. Mensagens ficam na aba `Chat` |
+| **Documentos** | Aba 📁 com links para modelos, organograma e arquivos da área, organizados por pasta e com busca. Gestores e membros adicionam; editar/remover: gestor ou quem adicionou. Fica na aba `Documentos` |
+| **Resumo semanal** | Toda segunda, na rotina das 7h, cada pessoa recebe por e-mail suas demandas divididas em: em atraso, muito perto do prazo (até 2 dias), precisa de atenção (sem prazo, sem responsável, urgente ou parada há 7+ dias) e dentro do prazo, mais o panorama do setor. Gestores veem também as listas da equipe. Desligue para todos com `RESUMO_SEMANAL = NAO`; para testar, rode `enviarResumoSemanalAgora` |
+| **Preferências de e-mail** | Clicando no próprio nome, cada pessoa liga ou desliga os avisos a cada demanda e o resumo semanal (colunas "Avisos por e-mail" e "Resumo semanal" da aba Equipe) |
 | **Avisos** | Pop-up de nova demanda, e-mails (responsável, solicitante, coordenação, @menções), resumo diário às 7h e webhook (Make/Z-API para WhatsApp) |
 | **Cronômetro e estimativas** | Tempo gasto × estimado e carga semanal × capacidade de cada pessoa |
 | **Histórico, comentários, anexos e checklists** | Por card |

@@ -46,7 +46,9 @@ const ABA = {
   TAREFAS: 'Tarefas',
   COMENTARIOS: 'Comentarios',
   HISTORICO: 'Historico',
-  DESDOBRAMENTO: 'Desdobramento'
+  DESDOBRAMENTO: 'Desdobramento',
+  CHAT: 'Chat',
+  DOCUMENTOS: 'Documentos'
 };
 
 // [chave interna, cabeçalho na planilha]
@@ -90,6 +92,7 @@ const CONFIG_PADRAO = [
   ['COR_FUNDO', '', 'Fundo do quadro para toda a equipe: cor (#RRGGBB) ou link https de uma imagem. Vazio = padrão. Cada pessoa pode trocar o seu no botão 🎨'],
   ['EMAIL_COORDENACAO', '', 'E-mail do gestor do setor (recebe resumo de novas demandas e atrasos)'],
   ['NOTIFICAR_RESPONSAVEL', 'SIM', 'E-mail ao responsável quando recebe uma demanda'],
+  ['RESUMO_SEMANAL', 'SIM', 'Toda segunda, na rotina das 7h, cada pessoa da equipe recebe por e-mail o resumo da semana (cada um pode desligar o seu)'],
   ['NOTIFICAR_SOLICITANTE', 'SIM', 'E-mail ao solicitante quando o status muda (se o formulário coletar e-mail)'],
   ['WEBHOOK_NOTIFICACAO', '', 'URL de webhook (Make/Z-API) para enviar WhatsApp. Deixe vazio para desativar'],
   ['AGENDA_INTEGRAR', 'SIM', 'Criar eventos de entrega no Google Agenda'],
@@ -287,15 +290,24 @@ function api(acao, p, codigo) {
   const me = autenticar_(p.autor, p.pin);
   const exigir = c.EXIGIR_LOGIN === 'SIM';
   if (exigir && !me) throw new Error('LOGIN');
-  if (acao === 'board') { const b = board_(p); b.me = me ? { nome: me.nome, perfil: me.perfil, interinoAte: me.interinoAte || '' } : null; return b; }
+  if (acao === 'board') { const b = board_(p); b.me = me ? { nome: me.nome, perfil: me.perfil, interinoAte: me.interinoAte || '', avisos: me.avisos, resumo: me.resumo, email: !!me.email } : null; return b; }
   if (acao === 'detalhes') return detalhes_(p.id);
   if (acao === 'agenda') return agendaEventos_(p.ini, p.fim);
+  if (acao === 'chatListar') return chatListar_(p.desde);
+  // valem para qualquer pessoa logada, inclusive Leitor
+  if ((acao === 'preferencias' || acao === 'chatEnviar') && !me) throw new Error('LOGIN');
+  if (acao === 'preferencias') return salvarPreferencias_(me, p);
+  if (acao === 'chatEnviar') { const lk = LockService.getScriptLock(); lk.waitLock(15000); try { return chatEnviar_(me, p.texto, p.desde); } finally { lk.releaseLock(); } }
 
   // daqui pra baixo: escrita
   const eu = me || (exigir ? null : { nome: p.autor || 'Alguém', perfil: 'Gestor' });
   if (!eu) throw new Error('LOGIN');
   if (eu.perfil === 'Leitor') throw new Error('SEM_PERMISSAO: seu perfil é de leitura');
   p.autor = eu.nome;
+  if (acao === 'docSalvar' || acao === 'docExcluir') {
+    const lk = LockService.getScriptLock(); lk.waitLock(15000);
+    try { return acao === 'docSalvar' ? docSalvar_(eu, p) : docExcluir_(eu, p.id); } finally { lk.releaseLock(); }
+  }
   if (acao === 'configFundo') {
     if (eu.perfil !== 'Gestor') throw new Error('SEM_PERMISSAO: só gestores definem o fundo da equipe');
     const cor = String(p.cor || '').trim();
@@ -640,6 +652,8 @@ function board_(p) {
     equipe: equipe_().map(m => ({ nome: m.nome, funcao: m.funcao, capacidade: m.capacidade, perfil: m.perfil })),
     tarefas: tarefas,
     recorrencias: lerRecorrentes_().map(recClient_),
+    chat: chatInfo_(),
+    documentos: lerDocumentos_(),
     agora: agora_()
   };
 }
@@ -1107,11 +1121,11 @@ function comentar_(id, autor, texto) {
   // @menções
   const equipe = equipe_();
   const mencionados = equipe.filter(m => m.email && new RegExp('@' + escRe_(m.nome.split(' ')[0]), 'i').test(texto));
-  mencionados.forEach(m => enviarEmail_(m.email, `💬 ${autor} mencionou você em "${t.titulo}"`,
+  mencionados.filter(m => m.avisos).forEach(m => enviarEmail_(m.email, `💬 ${autor} mencionou você em "${t.titulo}"`,
     `<p><b>${esc_(autor)}</b> escreveu:</p><blockquote>${esc_(texto)}</blockquote>${blocoTarefa_(t)}`));
   if (t.responsavel && t.responsavel !== autor && !mencionados.some(m => m.nome === t.responsavel)) {
     const r = membro_(t.responsavel);
-    if (r && r.email) enviarEmail_(r.email, `💬 Novo comentário em "${t.titulo}"`,
+    if (r && r.email && r.avisos) enviarEmail_(r.email, `💬 Novo comentário em "${t.titulo}"`,
       `<p><b>${esc_(autor)}</b> comentou:</p><blockquote>${esc_(texto)}</blockquote>${blocoTarefa_(t)}`);
   }
   return { id: cid, autor: autor, texto: texto, data: data };
@@ -1177,9 +1191,9 @@ function executarAutomacoes_(gatilho, t, antes) {
         t.checklist = (t.checklist || []).concat([{ id: uid_(), texto: valorAcao, feito: false }]);
         break;
       case 'Notificar e-mail': {
-        const destino = valorAcao === 'coordenacao' ? emailsCoordenacao_()
+        const destino = semQuemDesligou_(valorAcao === 'coordenacao' ? emailsCoordenacao_()
           : valorAcao === 'responsavel' ? (membro_(t.responsavel) || {}).email
-          : (membro_(valorAcao) || {}).email || valorAcao;
+          : (membro_(valorAcao) || {}).email || valorAcao);
         if (destino) efeitos.push(() => enviarEmail_(destino, `⚡ ${t.titulo} — ${gatilho.toLowerCase()} ${valorGatilho || ''}`.trim(),
           `<p>Automação disparada: <b>${esc_(rotulo)}</b></p>${blocoTarefa_(t)}`));
         break;
@@ -1216,6 +1230,7 @@ function rotinaDiaria() {
     gerarRecorrentes_();
     verificarAtrasos_();
     arquivarAntigas_();
+    try { resumoSemanal_(false); } catch (err) { console.warn('Resumo semanal falhou', err); }
   } finally {
     lock.releaseLock();
   }
@@ -1235,10 +1250,10 @@ function verificarAtrasos_() {
   atrasadas.concat(vencemHoje).forEach(t => (porPessoa[t.responsavel || ''] = porPessoa[t.responsavel || ''] || []).push(t));
   Object.keys(porPessoa).forEach(nome => {
     const m = membro_(nome);
-    if (!m || !m.email) return;
+    if (!m || !m.email || !m.avisos) return;
     enviarEmail_(m.email, `⏰ Você tem ${porPessoa[nome].length} entrega(s) vencendo ou atrasada(s)`, listaHtml_(porPessoa[nome], hoje));
   });
-  const coord = emailsCoordenacao_();
+  const coord = semQuemDesligou_(emailsCoordenacao_());
   if (coord && (atrasadas.length || vencemHoje.length)) {
     enviarEmail_(coord, `📊 Resumo do dia — ${atrasadas.length} atrasada(s), ${vencemHoje.length} vencendo hoje`,
       listaHtml_(atrasadas.concat(vencemHoje), hoje));
@@ -1566,7 +1581,7 @@ function emailsCoordenacao_() {
 function notificarNova_(t) {
   const c = cfg_();
   if (c.NOTIFICAR_RESPONSAVEL === 'SIM' && t.responsavel) notificarResponsavel_(t, 'Nova demanda para você');
-  const coord = emailsCoordenacao_();
+  const coord = semQuemDesligou_(emailsCoordenacao_());
   if (coord) enviarEmail_(coord, `🆕 Nova demanda: ${t.titulo}`, blocoTarefa_(t));
   webhook_('nova_tarefa', t);
 }
@@ -1574,7 +1589,7 @@ function notificarNova_(t) {
 function notificarResponsavel_(t, assunto) {
   const m = membro_(t.responsavel);
   if (!m || !m.email || cfg_().NOTIFICAR_RESPONSAVEL !== 'SIM') return;
-  enviarEmail_(m.email, `📥 ${assunto}: ${t.titulo}`, blocoTarefa_(t));
+  if (m.avisos) enviarEmail_(m.email, `📥 ${assunto}: ${t.titulo}`, blocoTarefa_(t));
   webhook_('atribuida', t, { telefoneResponsavel: m.telefone || '' });
 }
 
@@ -1675,9 +1690,165 @@ function equipe_(todos) {
     nome: r[0], email: r[1], funcao: r[2], capacidade: Number(r[3]) || 0,
     perfil: ['Gestor', 'Membro', 'Leitor'].indexOf(r[4]) >= 0 ? r[4] : 'Membro', pin: r[5] || '',
     ativo: String(r[6] || 'SIM').toUpperCase() !== 'NAO',
-    interinoAte: r[4] !== 'Gestor' && /^\d{4}-\d{2}-\d{2}$/.test(String(r[7] || '')) && String(r[7]) >= hoje_() ? String(r[7]) : ''
+    interinoAte: r[4] !== 'Gestor' && /^\d{4}-\d{2}-\d{2}$/.test(String(r[7] || '')) && String(r[7]) >= hoje_() ? String(r[7]) : '',
+    avisos: String(r[8] || 'SIM').toUpperCase() !== 'NAO', resumo: String(r[9] || 'SIM').toUpperCase() !== 'NAO'
   })).map(m => { m.perfilBase = m.perfil; if (m.interinoAte) m.perfil = 'Gestor'; return m; })
     .filter(m => todos || m.ativo);
+}
+
+/** Remove de uma lista de e-mails quem desligou os avisos por e-mail (aba Equipe, coluna "Avisos por e-mail"). */
+function semQuemDesligou_(emails) {
+  const off = equipe_(true).filter(m => !m.avisos && m.email).map(m => m.email.trim().toLowerCase());
+  return lista_(emails, ',').filter(e => off.indexOf(e.trim().toLowerCase()) < 0).join(', ');
+}
+
+/* ============================================================
+ *  PREFERÊNCIAS DE CADA PESSOA (aba Equipe, colunas I e J)
+ * ============================================================ */
+const CAB_PREFS = ['Avisos por e-mail', 'Resumo semanal'];
+function salvarPreferencias_(eu, p) {
+  const sh = ss_().getSheetByName(ABA.EQUIPE);
+  CAB_PREFS.forEach((h, i) => { if (!sh.getRange(1, 9 + i).getDisplayValue()) sh.getRange(1, 9 + i).setValue(h).setFontWeight('bold').setBackground('#1F3A5F').setFontColor('#FFFFFF'); });
+  const nomes = sh.getRange(1, 1, sh.getLastRow(), 1).getDisplayValues().map(r => norm_(r[0]));
+  const linha = nomes.indexOf(norm_(eu.nome)) + 1;
+  if (linha < 2) throw new Error('Pessoa não encontrada na aba Equipe');
+  const v = sh.getRange(linha, 9, 1, 2).getDisplayValues()[0];
+  const avisos = 'avisos' in p ? !!p.avisos : String(v[0] || 'SIM').toUpperCase() !== 'NAO';
+  const resumo = 'resumo' in p ? !!p.resumo : String(v[1] || 'SIM').toUpperCase() !== 'NAO';
+  sh.getRange(linha, 9, 1, 2).setValues([[avisos ? 'SIM' : 'NAO', resumo ? 'SIM' : 'NAO']]);
+  registrar_('—', eu.nome, 'Preferências', `avisos por e-mail ${avisos ? 'ligados' : 'desligados'} · resumo semanal ${resumo ? 'ligado' : 'desligado'}`);
+  return { avisos: avisos, resumo: resumo };
+}
+
+/* ============================================================
+ *  RESUMO SEMANAL — toda segunda, na rotina das 7h, para cada pessoa ativa com e-mail
+ * ============================================================ */
+function enviarResumoSemanalAgora() { soDono_(); return resumoSemanal_(true); }
+
+function resumoSemanal_(forcar) {
+  const c = cfg_();
+  if (c.RESUMO_SEMANAL === 'NAO' && !forcar) return 0;
+  const hoje = hoje_();
+  const props = PropertiesService.getScriptProperties();
+  if (!forcar && (diaSemana_(hoje) !== 1 || props.getProperty('RESUMO_SEMANAL_ULTIMO') === hoje)) return 0;
+  const abertas = lerTarefas_().filter(t => t.arquivada !== 'SIM' && t.status !== c.COLUNA_FINAL);
+  const em2 = isoMais_(hoje, 2), fimSemana = isoMais_(hoje, 6), parado = isoMais_(hoje, -7);
+  const classe = t => {
+    if (t.prazo && t.prazo < hoje) return 'atraso';
+    if (t.prazo && t.prazo <= em2) return 'perto';
+    if (!t.prazo || !t.responsavel || t.prioridade === 'Urgente' || String(t.atualizadoEm || '').slice(0, 10) < parado) return 'atencao';
+    return 'ok';
+  };
+  const motivo = t => [!t.prazo && 'sem prazo', !t.responsavel && 'sem responsável', t.prioridade === 'Urgente' && 'urgente',
+    t.atualizadoEm && String(t.atualizadoEm).slice(0, 10) < parado && 'parada há mais de 7 dias'].filter(Boolean).join(', ');
+  const grupos = lista => {
+    const g = { atraso: [], perto: [], atencao: [], ok: [] };
+    lista.forEach(t => g[classe(t)].push(t));
+    Object.values(g).forEach(a => a.sort((x, y) => String(x.prazo || '9999').localeCompare(String(y.prazo || '9999'))));
+    return g;
+  };
+  const url = ScriptApp.getService().getUrl();
+  const item = (t, comResp) => `<li style="margin:3px 0"><b>${esc_(t.titulo)}</b>${comResp ? ' — ' + esc_(t.responsavel || 'sem responsável') : ''}${t.prazo ? ' · prazo ' + dataBr_(t.prazo) : ''}${classe(t) === 'atencao' ? ` <span style="color:#b54708">(${esc_(motivo(t))})</span>` : ''}</li>`;
+  const secao = (cor, titulo, lista, comResp) => lista.length ? `<h3 style="margin:18px 0 6px;color:${cor};font-size:15px">${titulo} (${lista.length})</h3><ul style="padding-left:18px;margin:0">${lista.slice(0, 25).map(t => item(t, comResp)).join('')}</ul>${lista.length > 25 ? `<p style="color:#6b7280">+ ${lista.length - 25} no quadro</p>` : ''}` : '';
+  const blocos = (g, comResp) => secao('#b42318', '🔴 Em atraso', g.atraso, comResp) + secao('#b54708', '🟠 Muito perto do prazo (até 2 dias)', g.perto, comResp)
+    + secao('#93370d', '⚠️ Precisa de atenção', g.atencao, comResp) + secao('#027a48', '🟢 Dentro do prazo', g.ok, comResp);
+  const geral = grupos(abertas);
+  const placar = `<table style="border-collapse:collapse;margin:8px 0"><tr>${[['🔴 Em atraso', geral.atraso.length], ['🟠 Perto do prazo', geral.perto.length], ['⚠️ Atenção', geral.atencao.length], ['🟢 No prazo', geral.ok.length]]
+    .map(([l, n]) => `<td style="padding:6px 12px;border:1px solid #e5e7eb;text-align:center"><div style="font-size:20px;font-weight:700">${n}</div><div style="font-size:12px;color:#6b7280">${l}</div></td>`).join('')}</tr></table>`;
+  const semana = `${dataBr_(hoje).slice(0, 5)} a ${dataBr_(fimSemana).slice(0, 5)}`;
+  let n = 0;
+  equipe_().filter(m => m.email && m.resumo).forEach(m => {
+    const minhas = grupos(abertas.filter(t => norm_(t.responsavel) === norm_(m.nome)));
+    const total = minhas.atraso.length + minhas.perto.length + minhas.atencao.length + minhas.ok.length;
+    const html = `<h2 style="margin:0 0 4px">Olá, ${esc_(m.nome.split(' ')[0])}! Sua semana (${semana})</h2>
+      ${total ? `<p>Você tem <b>${total}</b> demanda(s) em aberto.</p>${blocos(minhas, false)}` : '<p>Você não tem demandas em aberto. 🙌</p>'}
+      <hr style="border:0;border-top:1px solid #e5e7eb;margin:22px 0">
+      <h3 style="margin:0 0 4px;font-size:15px">Panorama do setor</h3>${placar}
+      ${m.perfil === 'Gestor' ? blocos({ atraso: geral.atraso, perto: geral.perto, atencao: geral.atencao, ok: [] }, true) : ''}
+      ${url ? `<p style="margin-top:18px"><a href="${url}" style="background:#1F3A5F;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">Abrir o quadro</a></p>` : ''}
+      <p style="color:#9ca3af;font-size:12px">Para deixar de receber este resumo, clique no seu nome no quadro e desligue "Resumo semanal".</p>`;
+    const assunto = total ? `📅 Sua semana: ${minhas.atraso.length ? minhas.atraso.length + ' em atraso · ' : ''}${minhas.perto.length ? minhas.perto.length + ' perto do prazo · ' : ''}${total} em aberto` : '📅 Resumo da semana do setor';
+    enviarEmail_(m.email, assunto, html);
+    n++;
+  });
+  props.setProperty('RESUMO_SEMANAL_ULTIMO', hoje);
+  return n;
+}
+
+/* ============================================================
+ *  DOCUMENTOS — aba Documentos: links para modelos, organograma e arquivos da área, visíveis para todos.
+ *  Gestores e membros adicionam; editar/remover: gestor ou quem adicionou.
+ * ============================================================ */
+const CAB_DOCS = ['ID', 'Título', 'Link', 'Pasta', 'Descrição', 'Adicionado por', 'Data'];
+function abaDocs_() { const ss = ss_(); return ss.getSheetByName(ABA.DOCUMENTOS) || criarAba_(ss, ABA.DOCUMENTOS, CAB_DOCS, []); }
+function lerDocumentos_() {
+  const sh = ss_().getSheetByName(ABA.DOCUMENTOS);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, CAB_DOCS.length).getDisplayValues().filter(r => r[0] && r[1] && r[2])
+    .map(r => ({ id: r[0], titulo: r[1], link: r[2], pasta: r[3] || 'Geral', descricao: r[4], autor: r[5], data: r[6] }));
+}
+function docSalvar_(eu, p) {
+  const titulo = String(p.titulo || '').trim().slice(0, 150), link = String(p.link || '').trim();
+  if (!titulo) throw new Error('Dê um nome ao documento');
+  if (!/^https:\/\/[^\s"'<>]+$/i.test(link)) throw new Error('O link precisa começar com https://');
+  const pasta = String(p.pasta || '').trim().slice(0, 60) || 'Geral', desc = String(p.descricao || '').trim().slice(0, 500);
+  const sh = abaDocs_();
+  if (p.id) {
+    const ids = sh.getRange(1, 1, sh.getLastRow(), 1).getDisplayValues().map(r => r[0]);
+    const linha = ids.indexOf(p.id) + 1;
+    if (linha < 2) throw new Error('Documento não encontrado');
+    const autor = sh.getRange(linha, 6).getDisplayValue();
+    if (eu.perfil !== 'Gestor' && norm_(autor) !== norm_(eu.nome)) throw new Error('SEM_PERMISSAO: só um gestor ou quem adicionou pode editar');
+    sh.getRange(linha, 2, 1, 4).setNumberFormat('@').setValues([[titulo, link, pasta, desc]]);
+  } else {
+    sh.getRange(sh.getLastRow() + 1, 1, 1, CAB_DOCS.length).setNumberFormat('@').setValues([[uid_(), titulo, link, pasta, desc, eu.nome, agora_()]]);
+  }
+  registrar_('—', eu.nome, p.id ? 'Editou documento' : 'Adicionou documento', titulo);
+  return lerDocumentos_();
+}
+function docExcluir_(eu, id) {
+  const sh = abaDocs_();
+  const v = sh.getRange(1, 1, sh.getLastRow(), 6).getDisplayValues();
+  const i = v.findIndex(r => r[0] === id);
+  if (i < 1) throw new Error('Documento não encontrado');
+  if (eu.perfil !== 'Gestor' && norm_(v[i][5]) !== norm_(eu.nome)) throw new Error('SEM_PERMISSAO: só um gestor ou quem adicionou pode remover');
+  sh.deleteRow(i + 1);
+  registrar_('—', eu.nome, 'Removeu documento', v[i][1]);
+  return lerDocumentos_();
+}
+
+/* ============================================================
+ *  CHAT INTERNO — aba Chat (ID, Data, Autor, Texto). O quadro lê as mensagens novas a cada poucos segundos.
+ * ============================================================ */
+function abaChat_() {
+  const ss = ss_();
+  return ss.getSheetByName(ABA.CHAT) || criarAba_(ss, ABA.CHAT, ['ID', 'Data', 'Autor', 'Texto'], []);
+}
+function chatInfo_() {
+  const sh = ss_().getSheetByName(ABA.CHAT);
+  if (!sh || sh.getLastRow() < 2) return { total: 0, ultimo: null };
+  const r = sh.getRange(sh.getLastRow(), 1, 1, 4).getDisplayValues()[0];
+  return { total: sh.getLastRow() - 1, ultimo: { autor: r[2], texto: String(r[3]).slice(0, 80), data: r[1] } };
+}
+function chatListar_(desde) {
+  const sh = ss_().getSheetByName(ABA.CHAT);
+  if (!sh || sh.getLastRow() < 2) return { total: 0, msgs: [] };
+  const total = sh.getLastRow() - 1;
+  let ini = Math.max(Number(desde) || 0, total - 200); // no máximo as últimas 200
+  if (ini >= total) return { total: total, msgs: [] };
+  const v = sh.getRange(ini + 2, 1, total - ini, 4).getDisplayValues();
+  return { total: total, msgs: v.map((r, i) => ({ n: ini + i + 1, id: r[0], data: r[1], autor: r[2], texto: r[3] })) };
+}
+function chatEnviar_(eu, texto, desde) {
+  texto = String(texto || '').trim().slice(0, 2000);
+  if (!texto) throw new Error('Mensagem vazia');
+  const sh = abaChat_();
+  sh.getRange(sh.getLastRow() + 1, 1, 1, 4).setNumberFormat('@').setValues([[uid_(), agora_(), eu.nome, texto]]);
+  // @menções: avisa por e-mail quem foi citado (se não desligou os avisos)
+  equipe_().filter(m => m.email && m.avisos && norm_(m.nome) !== norm_(eu.nome) && new RegExp('@' + escRe_(m.nome.split(' ')[0]), 'i').test(texto))
+    .forEach(m => enviarEmail_(m.email, `💬 ${eu.nome} mencionou você no chat`,
+      `<p><b>${esc_(eu.nome)}</b> escreveu no chat da equipe:</p><blockquote>${esc_(texto)}</blockquote>${ScriptApp.getService().getUrl() ? `<p><a href="${ScriptApp.getService().getUrl()}">Abrir o quadro</a></p>` : ''}`));
+  return chatListar_(desde === undefined ? sh.getLastRow() - 2 : desde); // devolve também o que chegou de outras pessoas
 }
 
 function membro_(nome) {
